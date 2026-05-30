@@ -7,9 +7,9 @@
  *   subline   (heroSubline, textMuted)         →  "€312 less than April"  (D4)
  *
  * The mantissa renders in `accentDeep`; the cents fraction renders in `accent`
- * at ~half the size, matching the canon's two-tone treatment. We split via
- * Intl.NumberFormat#formatToParts so locale-correct decimal separators (.,)
- * and currency placement are preserved.
+ * at ~half the size, matching the canon's two-tone treatment. We format with
+ * Intl.NumberFormat#format and split off the trailing two-digit fraction by hand
+ * (formatToParts is undefined on iOS Hermes — see splitCurrency).
  *
  * Motion: Wave 2 heroCountUp on the integer cents value (600ms outCubic),
  * sharedMonth carry on month change. reduce-motion respected via withMotion.
@@ -52,28 +52,31 @@ type SplitParts = {
 };
 
 function splitCurrency(amountMajor: number, currency: string, locale: string): SplitParts {
-  const parts = new Intl.NumberFormat(locale, {
+  // iOS Hermes does NOT implement Intl.NumberFormat#formatToParts (its Intl is
+  // backed by Apple Foundation, not full ICU) — calling it returns undefined and
+  // crashed TF#10 at cold start ("undefined is not a function" → RCTFatal →
+  // NSException → SIGABRT). Android Hermes and Expo Go DO have it, which is why
+  // this only ever surfaced in a production iOS binary. Use .format() (present on
+  // every engine — see formatMoney) and split the trailing fraction by hand.
+  const full = new Intl.NumberFormat(locale, {
     style: 'currency',
     currency,
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).formatToParts(amountMajor);
-  let mantissa = '';
-  let fraction = '';
-  let sawDecimal = false;
-  for (const p of parts) {
-    if (p.type === 'decimal') {
-      sawDecimal = true;
-      fraction += p.value;
-      continue;
-    }
-    if (p.type === 'fraction') {
-      fraction += p.value;
-      continue;
-    }
-    if (!sawDecimal) mantissa += p.value;
+  }).format(amountMajor);
+  // minimumFractionDigits:2 guarantees exactly two fraction digits at the end,
+  // preceded by the locale decimal separator (. or ,). Capture an optional
+  // trailing currency symbol/space so locales that place the symbol last are
+  // tolerated (it is dropped from the split, matching the previous behaviour).
+  const m = full.match(/^(.*?)([.,])(\d{2})(\D*)$/);
+  if (m) {
+    const head = m[1] ?? '';
+    const sep = m[2] ?? '';
+    const frac = m[3] ?? '';
+    return { mantissa: head, fraction: `${sep}${frac}` };
   }
-  return { mantissa, fraction };
+  // No parseable fraction (unexpected) — show the whole string, no two-tone split.
+  return { mantissa: full, fraction: '' };
 }
 
 export function MonthlyTotalHero({
