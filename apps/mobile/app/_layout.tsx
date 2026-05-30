@@ -49,6 +49,8 @@ import { ChatBottomSheet } from '@/src/features/chat/ChatBottomSheet';
 // The sentry-wizard-injected Sentry.init({ sendDefaultPii: true }) was removed:
 // it duplicated init and over-collected PII against CLAUDE.md fintech privacy.
 import * as Sentry from '@sentry/react-native';
+import { RootErrorBoundary } from '@/src/components/RootErrorBoundary';
+import { setBootError } from '@lib/bootError';
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   // ignored
@@ -64,6 +66,34 @@ markColdStart();
 // measurements can enrich into Sentry once keys are provided. Return value
 // gates Sentry.wrap so the SDK never emits "wrap before init" on DSN-less builds.
 const _sentryActive = initObservability();
+
+// DIAGNOSTIC (build #11): the TF#10 cold-start crash is not captured by Sentry
+// (early-boot crash-loop) and cannot be symbolicated on this Windows/WSL setup
+// (no Mac/atos/llvm). Intercept fatal JS errors so RootErrorBoundary can render
+// the exact message+stack on-device instead of the process aborting silently.
+// Chains to the default handler as NON-fatal so the app survives to draw the
+// overlay. Remove once the crash root cause is found. Stores message/stack only.
+{
+  const g = globalThis as unknown as {
+    ErrorUtils?: {
+      getGlobalHandler?: () => ((e: Error, isFatal?: boolean) => void) | undefined;
+      setGlobalHandler?: (h: (e: Error, isFatal?: boolean) => void) => void;
+    };
+  };
+  const prev = g.ErrorUtils?.getGlobalHandler?.();
+  g.ErrorUtils?.setGlobalHandler?.((error: Error, isFatal?: boolean) => {
+    try {
+      setBootError({
+        message: error?.message ?? String(error),
+        stack: error?.stack,
+        source: isFatal ? 'fatal' : 'error',
+      });
+    } catch {
+      // never let the diagnostic handler itself throw
+    }
+    prev?.(error, false);
+  });
+}
 
 // D-01: 5-minute background threshold — a code constant, not a user setting.
 const RESUME_LOCK_MS = 5 * 60 * 1000;
@@ -236,6 +266,7 @@ function RootLayout() {
   markAppReady();
 
   return (
+    <RootErrorBoundary>
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider initialMetrics={initialWindowMetrics}>
       <QueryClientProvider client={queryClient}>
@@ -277,6 +308,7 @@ function RootLayout() {
       </QueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
+    </RootErrorBoundary>
   );
 }
 

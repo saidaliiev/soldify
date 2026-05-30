@@ -58,9 +58,17 @@ let cached: GlassEffectModule | null | undefined;
  * Android, pre-iOS-26 iOS, or if the require itself fails for any reason.
  * Callers MUST treat null as "render the solid fallback path".
  */
+// DIAGNOSTIC (build #11): hard kill-switch for expo-glass-effect. The TF#10
+// cold-start SIGABRT (uncaught NSException) implicates this 0.1.x BETA native
+// binding on iOS 26 — the gate below only ever protected PRE-26 devices, so on
+// the iOS 26.4.2 crash device glass WAS loaded. Forcing the solid fallback on
+// ALL devices tests (and, if confirmed, fixes) that hypothesis. Flip to false
+// to re-enable glass once the beta is proven safe on-device.
+const GLASS_KILL_SWITCH = true;
+
 export function getGlassEffect(): GlassEffectModule | null {
   if (cached !== undefined) return cached;
-  if (!IS_LIQUID_GLASS_OS) {
+  if (GLASS_KILL_SWITCH || !IS_LIQUID_GLASS_OS) {
     cached = null;
     return cached;
   }
