@@ -74,3 +74,7 @@ DerivedData/
 
 # Local agent runtime (locks, scheduled tasks) — not shared
 .claude/
+
+# Local design-iteration screenshots (working captures from the 2026-05-27
+# dashboard design pass) — keep locally, never tracked
+/dashboard_*.png
