@@ -37,6 +37,7 @@ import { ChatEmptyState } from './ChatEmptyState';
 import { ChatMessageList } from './ChatMessageList';
 import { ChatInputRow } from './ChatInputRow';
 import { ChatErrorBanner } from './ChatErrorBanner';
+import { TAB_BAR_HEIGHT, TAB_BAR_FLOATING_MARGIN } from '@/src/features/chrome/GlassTabBar';
 
 export function ChatScreen(): React.JSX.Element {
   const { t } = useTranslation();
@@ -86,10 +87,16 @@ export function ChatScreen(): React.JSX.Element {
 
         <ChatErrorBanner visible={lastError != null} />
 
-        <ChatInputRow
-          prefillText={prefillText}
-          onPrefillConsumed={handlePrefillConsumed}
-        />
+        {/* The floating GlassTabBar (position:absolute) overlays the bottom of
+            every tab screen, so this bottom-anchored input row rendered BEHIND
+            it — the field + send button were unreachable. Reserve the bar's
+            footprint (height + floating margin) so the row docks above it. */}
+        <View style={styles.inputDock}>
+          <ChatInputRow
+            prefillText={prefillText}
+            onPrefillConsumed={handlePrefillConsumed}
+          />
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -119,5 +126,8 @@ const styles = StyleSheet.create({
   },
   body: {
     flex: 1,
+  },
+  inputDock: {
+    marginBottom: TAB_BAR_HEIGHT + TAB_BAR_FLOATING_MARGIN,
   },
 });
