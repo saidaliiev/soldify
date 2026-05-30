@@ -54,8 +54,15 @@ const GAP_DEG = 2;
 // clearly leading one another while overlapping enough to read as one fluid
 // sweep, not a discrete march. Mount-draw only; month-change stays global.
 const STAGGER_OVERLAP = 0.55;
-// Stroke centerline radius — outer ring = CANVAS_SIZE/2 = 100, half-stroke = 5.
-const RADIUS = CANVAS_SIZE / 2 - STROKE_WIDTH / 2;
+// Stroke centerline radius. The ring is STROKE_WIDTH wide and centered on this
+// radius, so its outer edge sits at RADIUS + STROKE_WIDTH/2. With round caps +
+// antialiasing that outer edge must stay INSIDE the 200×200 canvas or Skia clips
+// it against the canvas bounds — the ring then reads as "not a full circle"
+// (the STROKE_WIDTH 10→14 bump in Sprint E1 pushed the old formula's edge to
+// exactly CANVAS_SIZE/2=100, i.e. flush with the boundary). STROKE_PAD keeps a
+// margin so the outer edge lands at CANVAS_SIZE/2 - STROKE_PAD.
+const STROKE_PAD = 3;
+const RADIUS = CANVAS_SIZE / 2 - STROKE_WIDTH / 2 - STROKE_PAD;
 
 type Props = {
   readonly breakdown: CategoryBreakdown;
