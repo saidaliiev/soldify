@@ -50,7 +50,14 @@ import { ChatBottomSheet } from '@/src/features/chat/ChatBottomSheet';
 // it duplicated init and over-collected PII against CLAUDE.md fintech privacy.
 import * as Sentry from '@sentry/react-native';
 import { RootErrorBoundary } from '@/src/components/RootErrorBoundary';
+import { BootTraceScreen } from '@/src/components/BootTraceScreen';
 import { setBootError } from '@lib/bootError';
+import {
+  markBootStage,
+  didPreviousBootCrash,
+  getPreviousBootTrail,
+  clearBootTrace,
+} from '@lib/coldStartTrace';
 
 SplashScreen.preventAutoHideAsync().catch(() => {
   // ignored
@@ -60,6 +67,11 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 // perf.ts captures Date.now() at import time; markColdStart() is the auditable
 // call-site confirming the mark is intentional (grep target in SUMMARY).
 markColdStart();
+
+// DIAGNOSTIC (build #11): record that all top-level imports survived. The boot
+// trace localizes the TF#10 cold-start SIGABRT when nothing else is catchable
+// (see coldStartTrace.ts). Remove with the rest of the build #11 instrumentation.
+markBootStage('module-load');
 
 // T-05-16/17: Crash monitoring init — no-ops gracefully when EXPO_PUBLIC_SENTRY_DSN
 // is absent (P0 #7); idempotent; must run before the render gate so perf.ts
@@ -159,8 +171,15 @@ function RootLayout() {
   const [i18nReady, setI18nReady] = useState(false);
   const [dbReady, setDbReady] = useState(false);
 
+  // DIAGNOSTIC (build #11): if the previous cold start crashed before reaching
+  // 'render', surface the boot trace and SKIP the risky boot path (op-sqlite
+  // migrations / biometric) so the crash loop breaks and the milestone is
+  // visible on-device. Computed once (lazy initializer).
+  const [prevCrashed] = useState(() => didPreviousBootCrash());
+
   useEffect(() => {
     if (fontsLoaded) {
+      markBootStage('fonts');
       SplashScreen.hideAsync().catch(() => {
         // ignored
       });
@@ -168,12 +187,19 @@ function RootLayout() {
   }, [fontsLoaded]);
 
   useEffect(() => {
+    // DIAGNOSTIC (build #11): skip op-sqlite entirely while surfacing a crash trace.
+    if (prevCrashed) return;
     void (async () => {
       await initI18n();
       setI18nReady(true);
+      markBootStage('i18n');
 
       try {
+        // Sync flush BEFORE the deferred op-sqlite require()+open() in getDB() —
+        // a native SQLite fault leaves 'migrations:start' as the last milestone.
+        markBootStage('migrations:start');
         runMigrations(getDB());
+        markBootStage('migrations:done');
         setDbReady(true);
       } catch (err) {
         // CR-03: do NOT set dbReady=true on migration failure.
@@ -189,19 +215,21 @@ function RootLayout() {
         // On next cold start the migration retries from the last committed version.
       }
     })();
-  }, []);
+  }, [prevCrashed]);
 
   // T-05-01: Cold-start biometric gate — runs once after db/i18n/fonts are ready.
   // If biometricEnabled is false, biometricPassed was initialised true → no-op.
   // If true, authenticate and re-attempt on failure until success (never render
   // partial UI on failed auth — T-05-01 ASVS L1 auth-on-open).
   useEffect(() => {
+    if (prevCrashed) return; // DIAGNOSTIC (build #11): skip biometric while surfacing a crash trace
     if (!biometricEnabled) {
       setBiometricPassed(true);
       return;
     }
     if (!fontsLoaded || !i18nReady || !dbReady) return;
 
+    markBootStage('biometric:start');
     let cancelled = false;
     void (async () => {
       // Re-attempt on failure — never render partial UI on failed auth (T-05-01).
@@ -210,6 +238,7 @@ function RootLayout() {
         const passed = await authenticateDevice();
         if (cancelled) return;
         if (passed) {
+          markBootStage('biometric:passed');
           setBiometricPassed(true);
           return;
         }
@@ -218,7 +247,7 @@ function RootLayout() {
       }
     })();
     return () => { cancelled = true; };
-  }, [biometricEnabled, fontsLoaded, i18nReady, dbReady]);
+  }, [biometricEnabled, fontsLoaded, i18nReady, dbReady, prevCrashed]);
 
   // D-01: AppState resume gate — re-locks after > 5 minutes backgrounded.
   // 05-02 extension: on every 'active' transition while digestEnabled, re-schedule
@@ -254,6 +283,12 @@ function RootLayout() {
     return () => sub.remove();
   }, [biometricEnabled, digestEnabled]);
 
+  // DIAGNOSTIC (build #11): previous cold start crashed before 'render' — show
+  // which milestone it died after instead of re-running the risky boot path.
+  if (prevCrashed) {
+    return <BootTraceScreen trail={getPreviousBootTrail()} onClear={clearBootTrace} />;
+  }
+
   // T-05-01: Render gate — never render partial UI when auth is pending/failed.
   if (!fontsLoaded || !i18nReady || !dbReady || !biometricPassed) {
     return null;
@@ -264,6 +299,7 @@ function RootLayout() {
   // Called here (not in an effect) so it fires on the same synchronous pass that
   // produces the first real render. Idempotent — safe across React re-renders.
   markAppReady();
+  markBootStage('render');
 
   return (
     <RootErrorBoundary>
