@@ -52,7 +52,9 @@ export type SliceAngle = {
  * the leading and trailing edges of each slice.
  *
  * Total swept angle (sum of end−start across all slices) = 360 − N×gapDeg,
- * where N = number of arcs rendered (top + other).
+ * where N = number of arcs rendered (top + other). Exception: a lone slice
+ * spans the full 360° with no gap — it has no neighbour to separate from, so
+ * trimming a gap would leave a spurious open notch at 12 o'clock.
  */
 export function computeSliceAngles(
   slices: readonly CategorySlice[],
@@ -63,6 +65,22 @@ export function computeSliceAngles(
   if (other != null) all.push(other);
 
   if (all.length === 0) return [];
+
+  // A lone slice (single category at 100%) is the whole ring. There is no
+  // adjacent slice to separate from, so the inter-slice gap must NOT be cut —
+  // doing so leaves a notch at 12 o'clock and the ring reads as "open"
+  // (smoke-test 2026-05-31). Emit a full 0→360 sweep; arcPath closes it.
+  if (all.length === 1) {
+    const s = all[0]!;
+    return [
+      {
+        startDeg: 0,
+        endDeg: 360,
+        color: s.color,
+        categoryId: s.slug === 'other' ? 'other' : s.categoryId,
+      },
+    ];
+  }
 
   const half = gapDeg / 2;
   const result: SliceAngle[] = [];
@@ -156,6 +174,20 @@ function arcPath(cx: number, cy: number, r: number, startDeg: number, endDeg: nu
   const endPt = polarToCartesian(cx, cy, r, endDeg);
 
   const sweepDeg = endDeg - startDeg;
+
+  // Full ring (lone 100% slice: startDeg=0, endDeg=360). A single SVG 'A' whose
+  // start and end points coincide is a degenerate no-op — Skia draws nothing.
+  // Split into two 180° arcs so the circle closes; round stroke caps meet
+  // seamlessly at the 12 o'clock seam.
+  if (sweepDeg >= 360) {
+    const midPt = polarToCartesian(cx, cy, r, startDeg + 180);
+    return [
+      'M', fmt(startPt.x), fmt(startPt.y),
+      'A', fmt(r), fmt(r), '0', '0', '1', fmt(midPt.x), fmt(midPt.y),
+      'A', fmt(r), fmt(r), '0', '0', '1', fmt(startPt.x), fmt(startPt.y),
+    ].join(' ');
+  }
+
   const largeArcFlag = sweepDeg > 180 ? 1 : 0;
   // 0° = top, increasing clockwise → SVG sweep-flag = 1 (clockwise direction).
   const sweepFlag = 1;

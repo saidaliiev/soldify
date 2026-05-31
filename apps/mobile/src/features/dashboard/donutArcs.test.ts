@@ -121,7 +121,7 @@ test('buildDonutArcs: 5 top slices + Other — returns 6 arcs, Other color is mu
 // buildDonutArcs: single slice 100%
 // ---------------------------------------------------------------------------
 
-test('buildDonutArcs: single 100% slice — one full ring with gap cut', () => {
+test('buildDonutArcs: single 100% slice — one full CLOSED ring (no gap notch)', () => {
   const slices: CategorySlice[] = [makeSlice(1, 1000, 1000)];
   const result = buildDonutArcs(slices, null, 100, 10, 2);
   assert.strictEqual(result.length, 1);
@@ -129,10 +129,15 @@ test('buildDonutArcs: single 100% slice — one full ring with gap cut', () => {
   assert.ok(arc, 'arc[0] present');
   assert.ok(!arc.path.includes('NaN'), 'no NaN');
 
+  // A lone slice spans the whole ring — the inter-slice gap must NOT be cut
+  // (it would render as an open notch at 12 o'clock). Full 360° sweep.
   const angles = computeSliceAngles(slices, null, 2);
   const sweep = angles[0]!.endDeg - angles[0]!.startDeg;
-  // 360 − 1 × 2 = 358
-  assert.ok(Math.abs(sweep - 358) < 0.001, `expected 358, got ${sweep}`);
+  assert.ok(Math.abs(sweep - 360) < 0.001, `expected 360, got ${sweep}`);
+  // Closed circle is emitted as two semicircle arcs — a single 'A' whose
+  // endpoints coincide draws nothing in SVG/Skia.
+  const arcCmds = (arc.path.match(/A/g) ?? []).length;
+  assert.strictEqual(arcCmds, 2, 'full ring uses two semicircle arcs');
 });
 
 // ---------------------------------------------------------------------------
