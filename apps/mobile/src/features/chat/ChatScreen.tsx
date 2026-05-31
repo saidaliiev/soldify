@@ -20,8 +20,10 @@
 
 import React from 'react';
 import {
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -76,7 +78,17 @@ export function ChatScreen(): React.JSX.Element {
 
         <View style={styles.body}>
           {messages.length === 0 ? (
-            <ChatEmptyState onSubmitPrompt={handlePromptSubmit} />
+            // The input is multiline (Return inserts a newline, never dismisses)
+            // and there is no scroll list on the empty state, so without this the
+            // keyboard could not be dismissed at all (smoke-test 2026-05-31).
+            // Tapping the empty area drops focus; the chips keep their own taps.
+            <Pressable
+              style={styles.flex}
+              onPress={() => Keyboard.dismiss()}
+              accessible={false}
+            >
+              <ChatEmptyState onSubmitPrompt={handlePromptSubmit} />
+            </Pressable>
           ) : (
             <ChatMessageList
               messages={messages}

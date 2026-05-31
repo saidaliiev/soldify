@@ -101,6 +101,8 @@ export function ChatMessageList({ messages, onRetryAssistant }: Props): React.JS
       getItemType={getItemType}
       contentContainerStyle={styles.contentContainer}
       showsVerticalScrollIndicator={false}
+      keyboardDismissMode="on-drag"
+      keyboardShouldPersistTaps="handled"
       accessibilityLabel="Chat messages"
     />
   );
