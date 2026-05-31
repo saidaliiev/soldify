@@ -12,7 +12,7 @@ import {
   ScrollView,
   StyleSheet,
 } from 'react-native';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
 import { COLORS, SPACING, RADIUS } from '@design/tokens';
@@ -73,6 +73,21 @@ export default function CategoriesScreen(): React.JSX.Element {
 
   return (
     <SafeAreaView style={styles.safe} accessibilityLabel="Categories screen">
+      {/* In-body back affordance — this is a pushed route with the native stack
+          header hidden (app/_layout.tsx), so without this the only way back is
+          the edge swipe, which gives the user no visible cue (smoke-test
+          2026-05-31). Mirrors the Settings/JarDetail back row. */}
+      <Pressable
+        onPress={() => router.back()}
+        accessibilityRole="button"
+        accessibilityLabel={t('common.back', { defaultValue: 'Back' })}
+        style={({ pressed }) => [styles.backRow, pressed && styles.pressed]}
+      >
+        <Text style={styles.backLabel} allowFontScaling>
+          ‹ {t('common.back', { defaultValue: 'Back' })}
+        </Text>
+      </Pressable>
+
       <View style={styles.header}>
         <Text style={styles.title} accessibilityRole="header" allowFontScaling>
           Categories
@@ -141,11 +156,21 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
+  backRow: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.sm,
+  },
+  backLabel: {
+    ...TYPE.uiBody,
+    color: COLORS.accent,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.md,
-    paddingTop: SPACING.md,
+    paddingTop: SPACING.sm,
     paddingBottom: SPACING.sm,
   },
   title: {
