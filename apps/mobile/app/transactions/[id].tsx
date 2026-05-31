@@ -136,7 +136,16 @@ export default function TransactionDetailScreen(): React.JSX.Element {
 
   return (
     <SafeAreaView style={styles.safe} accessibilityLabel="Transaction detail">
-      <Stack.Screen options={{ title: t('transactions.detail_title'), headerShown: true }} />
+      <Stack.Screen
+        options={{
+          title: t('transactions.detail_title'),
+          headerShown: true,
+          // Chevron-only back button. Without this, native-stack falls back to
+          // the previous route's title — the "(tabs)" group segment then leaks
+          // as the back label (smoke-test 2026-05-31).
+          headerBackButtonDisplayMode: 'minimal',
+        }}
+      />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
