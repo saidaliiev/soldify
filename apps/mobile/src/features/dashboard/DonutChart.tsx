@@ -25,7 +25,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { Canvas, Path, Skia } from '@shopify/react-native-skia';
+import { Canvas, Group, Path, Skia } from '@shopify/react-native-skia';
 import Animated, {
   useAnimatedReaction,
   useAnimatedStyle,
@@ -64,6 +64,14 @@ const STAGGER_OVERLAP = 0.55;
 // margin so the outer edge lands at CANVAS_SIZE/2 - STROKE_PAD.
 const STROKE_PAD = 3;
 const RADIUS = CANVAS_SIZE / 2 - STROKE_WIDTH / 2 - STROKE_PAD;
+// donutArcs centers its geometry at (radius, radius), i.e. a 2·radius bounding
+// box — but the Canvas is CANVAS_SIZE square (200), so drawing raw left the ring
+// centered at (90,90): its top/left outer edge fell at 90−97=−7 and got clipped
+// by the canvas bounds, so the ring read as flat-topped / dented ("не круг",
+// smoke-test 2026-06-01). Translate the arcs by this offset to recenter on the
+// true canvas center (100,100), which also matches handleTap's (CANVAS_SIZE/2)
+// hit-test origin so slice taps land on the slice actually drawn.
+const DONUT_CENTER_OFFSET = CANVAS_SIZE / 2 - RADIUS;
 
 type Props = {
   readonly breakdown: CategoryBreakdown;
@@ -306,18 +314,20 @@ export function DonutChart({
           importantForAccessibility="no-hide-descendants"
         >
           <Canvas style={styles.canvas}>
-            {skPaths.map((entry, idx) =>
-              entry.skPath == null ? null : (
-                <Path
-                  key={`${String(entry.categoryId)}-${idx}`}
-                  path={entry.skPath}
-                  color={entry.color}
-                  style="stroke"
-                  strokeWidth={STROKE_WIDTH}
-                  strokeCap="round"
-                />
-              )
-            )}
+            <Group transform={[{ translateX: DONUT_CENTER_OFFSET }, { translateY: DONUT_CENTER_OFFSET }]}>
+              {skPaths.map((entry, idx) =>
+                entry.skPath == null ? null : (
+                  <Path
+                    key={`${String(entry.categoryId)}-${idx}`}
+                    path={entry.skPath}
+                    color={entry.color}
+                    style="stroke"
+                    strokeWidth={STROKE_WIDTH}
+                    strokeCap="round"
+                  />
+                )
+              )}
+            </Group>
           </Canvas>
         </Pressable>
       </Animated.View>
