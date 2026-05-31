@@ -17,6 +17,7 @@ import { create } from 'zustand';
 
 import type { ChartPayload, FactsPack } from '@services/aiQuery';
 import { aiQuery } from '@services/aiQuery';
+import { i18n } from '@lib/i18n';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -172,9 +173,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
       replaceTypingWithAssistant(typingId, assistantMsg);
       setError(null);
     } catch (err) {
-      const errorText = err instanceof Error ? err.message : 'Service unavailable';
-      replaceTypingWithError(typingId, errorText);
-      setError(errorText);
+      // Never surface the raw Error.message in the UI — it can leak internal
+      // config detail (e.g. "[supabase] EXPO_PUBLIC_SUPABASE_URL is not set …",
+      // smoke-test 2026-05-31). Show a localized, user-safe line; keep the real
+      // cause in dev logs only (AI errors are config/network — no transaction PII).
+      if (__DEV__) console.warn('[chat] aiQuery failed:', err);
+      const friendly = i18n.t('chat.error_unavailable');
+      replaceTypingWithError(typingId, friendly);
+      setError(friendly);
     }
   },
 }));
