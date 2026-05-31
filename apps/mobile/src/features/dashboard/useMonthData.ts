@@ -18,6 +18,7 @@ import {
   getCategoryBreakdown,
   getMonthlyExpenseTotal,
 } from '@data/dashboardRepo';
+import { breakdownEqual } from './dashboardEquality';
 import type { CategoryBreakdown, MonthKey } from './types';
 
 // ---------------------------------------------------------------------------
@@ -48,7 +49,12 @@ export function useMonthData(monthKey: MonthKey): MonthData {
       const total = getMonthlyExpenseTotal(monthKey.year, monthKey.month);
       const br = getCategoryBreakdown(monthKey.year, monthKey.month);
       setTotalCents(total);
-      setBreakdown(br);
+      // Keep the previous reference when the data is unchanged so the donut's
+      // angle useMemo stays stable and the arc-draw does NOT replay on every
+      // tab focus (getCategoryBreakdown returns a fresh object each call). A
+      // no-op focus then bails out of the re-render entirely. Primitives
+      // (totalCents/error) already short-circuit via React's Object.is.
+      setBreakdown((prev) => (breakdownEqual(prev, br) ? prev : br));
       setError(false);
     } catch {
       // Never expose error details (T-02-01-03 — no PII / SQL fragments).

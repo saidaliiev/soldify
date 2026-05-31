@@ -31,6 +31,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   runOnJS,
+  cancelAnimation,
 } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
 
@@ -188,6 +189,19 @@ export function DonutChart({
     transform: [{ translateX: carryX.value }],
     opacity: carryOpacity.value,
   }));
+
+  // Stop any in-flight arc-draw / carry tween when the chart unmounts so a
+  // half-finished sweep can't keep firing runOnJS(setTQuantized) into a
+  // dead component (JS-thread hygiene; pairs with the referential-stability
+  // fix in useMonthData that stops spurious re-animation on tab focus).
+  useEffect(
+    () => () => {
+      cancelAnimation(progress);
+      cancelAnimation(carryX);
+      cancelAnimation(carryOpacity);
+    },
+    [progress, carryX, carryOpacity],
+  );
 
   // ---- QUAL-06: Skia first-frame mark (perf.ts) ----------------------------
   // Fires once on the first render pass where the chart has data to paint.

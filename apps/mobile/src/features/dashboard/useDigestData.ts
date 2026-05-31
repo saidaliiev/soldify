@@ -32,6 +32,7 @@ import {
   type DigestPhraseKey,
 } from './digestMath';
 import { addMonths } from './monthMath';
+import { numberArrayEqual } from './dashboardEquality';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -104,14 +105,26 @@ export function useDigestData(): DigestData {
       const mom = computeMonthOverMonthDelta(currentTotal, prevTotal, daysElapsedInCurrent, daysInPrev);
       const phraseKey = selectDigestPhraseKey(mom.mode);
 
-      setData({
+      const next: DigestData = {
         yesterdayCents,
         last7Days,
         phraseKey,
         deltaCents: Math.abs(mom.deltaCents),
         isLoading: false,
         error: null,
-      });
+      };
+      // Keep the previous reference when nothing changed so a no-op focus
+      // re-query does not re-render the DigestCard (matches useMonthData).
+      setData((prev) =>
+        prev.yesterdayCents === next.yesterdayCents &&
+        prev.deltaCents === next.deltaCents &&
+        prev.phraseKey === next.phraseKey &&
+        prev.isLoading === next.isLoading &&
+        prev.error === next.error &&
+        numberArrayEqual(prev.last7Days, next.last7Days)
+          ? prev
+          : next,
+      );
     } catch {
       // Defensive: surface as silent error string; never crash the dashboard.
       setData((prev) => ({ ...prev, error: 'digest_unavailable', isLoading: false }));
