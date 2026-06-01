@@ -40,7 +40,7 @@ import { TYPE } from '@design/typography';
 import { formatMoney } from '@lib/money';
 import { localizedCategoryName } from '@data/categoriesRepo';
 import { markFirstFrame } from '@lib/perf';
-import { computeSliceAngles, arcsFromSliceAngles, type SliceAngle } from './donutArcs';
+import { computeSliceAngles, type SliceAngle } from './donutArcs';
 import { interpolateSliceAngles, staggeredProgress } from './dashboardMotion';
 import { useMotion } from '@design/useMotion';
 import type { CategoryBreakdown, CategorySlice } from './types';
@@ -72,6 +72,43 @@ const RADIUS = CANVAS_SIZE / 2 - STROKE_WIDTH / 2 - STROKE_PAD;
 // true canvas center (100,100), which also matches handleTap's (CANVAS_SIZE/2)
 // hit-test origin so slice taps land on the slice actually drawn.
 const DONUT_CENTER_OFFSET = CANVAS_SIZE / 2 - RADIUS;
+
+// Build Skia paths from angle data using the NATIVE path API (addCircle /
+// addArc) instead of Skia.Path.MakeFromSVGString. The old SVG-arc string path
+// (donutArcs.arcPath → 'A' elliptical-arc command) was rendered by Skia 2.2.x
+// as a coarse faceted POLYGON, not a circle — the single-category full ring
+// (Coffee 100%) read as an octagon ("круг октагон", smoke-test 2026-06-01,
+// device-confirmed full-res frames). MakeFromSVGString flattens 'A' commands
+// too coarsely here; addCircle/addArc tessellate natively and stay smooth.
+// This is the rendering boundary the earlier clip (4629363) and center
+// (2ead797) fixes never touched, which is why the facets survived both.
+//
+// Geometry is canvas-local, centered at (radius, radius) — identical to the
+// old arcsFromSliceAngles — so the <Group> DONUT_CENTER_OFFSET transform still
+// positions it on the true canvas center. Angle convention: donutArcs uses
+// 0° = 12 o'clock, clockwise; Skia's addArc uses 0° = 3 o'clock, clockwise
+// (y-down), so Skia startAngle = startDeg − 90 (matches polarToCartesian).
+function skArcsFromSliceAngles(
+  angles: readonly SliceAngle[],
+  radius: number,
+) {
+  const cx = radius;
+  const cy = radius;
+  return angles.flatMap((a) => {
+    const sweep = a.endDeg - a.startDeg;
+    if (sweep <= 0) return []; // degenerate / not-yet-entered slice — draw nothing
+    const skPath = Skia.Path.Make();
+    if (sweep >= 360) {
+      // Full ring (lone 100% slice). addCircle closes seamlessly — no 12 o'clock
+      // seam, no two-arc trick, no facets.
+      skPath.addCircle(cx, cy, radius);
+    } else {
+      const oval = Skia.XYWHRect(cx - radius, cy - radius, radius * 2, radius * 2);
+      skPath.addArc(oval, a.startDeg - 90, sweep);
+    }
+    return [{ skPath, color: a.color, categoryId: a.categoryId }];
+  });
+}
 
 type Props = {
   readonly breakdown: CategoryBreakdown;
@@ -156,14 +193,10 @@ export function DonutChart({
       // leading edge — the established "entering" semantics, now per-slice.
       return angles.flatMap((slice, i) => {
         const tSlice = staggeredProgress(tQuantized, i, n, STAGGER_OVERLAP);
-        return arcsFromSliceAngles(
+        return skArcsFromSliceAngles(
           interpolateSliceAngles([], [slice], tSlice),
           RADIUS,
-        ).map((a) => ({
-          skPath: Skia.Path.MakeFromSVGString(a.path),
-          color: a.color,
-          categoryId: a.categoryId,
-        }));
+        );
       });
     }
     // Month-change: GLOBAL interpolation, unchanged from Task 6.
@@ -172,11 +205,7 @@ export function DonutChart({
       angles,
       tQuantized,
     );
-    return arcsFromSliceAngles(interpolated, RADIUS).map((a) => ({
-      skPath: Skia.Path.MakeFromSVGString(a.path),
-      color: a.color,
-      categoryId: a.categoryId,
-    }));
+    return skArcsFromSliceAngles(interpolated, RADIUS);
   }, [angles, tQuantized, isMountDraw]);
 
   // Redesign Wave 2 — MOTION.sharedMonth: on month swipe the donut carries
@@ -315,18 +344,16 @@ export function DonutChart({
         >
           <Canvas style={styles.canvas}>
             <Group transform={[{ translateX: DONUT_CENTER_OFFSET }, { translateY: DONUT_CENTER_OFFSET }]}>
-              {skPaths.map((entry, idx) =>
-                entry.skPath == null ? null : (
-                  <Path
-                    key={`${String(entry.categoryId)}-${idx}`}
-                    path={entry.skPath}
-                    color={entry.color}
-                    style="stroke"
-                    strokeWidth={STROKE_WIDTH}
-                    strokeCap="round"
-                  />
-                )
-              )}
+              {skPaths.map((entry, idx) => (
+                <Path
+                  key={`${String(entry.categoryId)}-${idx}`}
+                  path={entry.skPath}
+                  color={entry.color}
+                  style="stroke"
+                  strokeWidth={STROKE_WIDTH}
+                  strokeCap="round"
+                />
+              ))}
             </Group>
           </Canvas>
         </Pressable>
