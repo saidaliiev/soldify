@@ -54,3 +54,13 @@
 
 ### Sentry token is write-only (can't read crashes)  `[2026-05-24]`
 - The `sntrys_` auth token (org `lumina-fo`, DE region) is project-write only — no `event:read`. `/api/0/organizations/lumina-fo/projects/` returns HTTP 403. Crash triage works from device logs + hypotheses, not Sentry queries, until the token is upgraded with `event:read`.
+
+## Skia rendering
+
+### Never draw a circle/arc via `MakeFromSVGString` — it facets into a polygon  `[RULE, fix d239283 (donut) + 656f6ee (jar), 2026-06-01]`
+- **Breaks:** `@shopify/react-native-skia` 2.2.x flattens an SVG `A` (elliptical-arc) command fed to `Skia.Path.MakeFromSVGString` into a **coarse faceted polygon**. A full ring renders as an octagon, a partial arc as a chord-y polyline. Device-confirmed on the DonutChart full ring (Coffee 100%, smoke-test 2026-06-01) and the same pattern existed in `JarRing`.
+- **Fix:** build curves with the **native path API** — `Skia.Path.Make()` then `addCircle(cx,cy,r)` for full rings (seamless, no 359.9° two-arc seam hack) and `addArc(oval, startDeg, sweepDeg)` for partial arcs. These tessellate natively and stay smooth. Keep the pure angle math in a `*Geometry.ts`/`*Arcs.ts` module (emit angle/sweep, not an SVG string); build the Skia path in the component.
+- **Angle convention:** the geometry modules use 0° = 12 o'clock, clockwise; Skia `addArc` uses 0° = 3 o'clock, clockwise (y-down) → **Skia startAngle = geomDeg − 90** (12 o'clock = −90°).
+- **Also watch off-center clip:** these rings center geometry at `(radius,radius)` on a `size×size` canvas, shifting the ring `sw/2` toward top-left so the outer stroke edge clips ("не круг" flat-top). Center on `(size/2,size/2)` with `radius = size/2 − sw/2 − PAD`. Donut: `DONUT_CENTER_OFFSET`+`STROKE_PAD`; jar: `RING_PAD`.
+- **Faceting only bites CURVES.** Polylines (`Sparkline`) are unaffected. Unaudited `MakeFromSVGString` suspects that may draw arcs: `chat/ChatMiniChart.tsx`+`chatChartGeometry.ts`, `dashboard/donutArcs.ts` (dead `arcPath`?). Static icon SVG paths (`design/icons/**`) are fine.
+- **Status:** both fixes pushed origin/main, JS/Skia-only (OTA-deliverable). RENDER-PENDING device/emulator confirmation.
