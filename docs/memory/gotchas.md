@@ -20,6 +20,12 @@
 - **Scheme is `soldi`** (per `apps/mobile/app.json`), NOT `soldify`.
 - `--tunnel` is NOT needed — emulator and WSL2 share the same Windows host; `--lan` suffices.
 
+### ⚠️ dev-client silently runs the EMBEDDED bundle when Metro TCP is unreachable  `[2026-06-01, blocked octagon verify]`
+- **Breaks:** deep-linking the dev-client (`exp+soldi://…?url=http://<WSL_IP>:8081`) opened the app, but Metro served **zero bundle requests** — the app ran its **APK-embedded bundle (stale, pre-fix code)** as an offline fallback. `pm clear app.soldi.mobile` (wipes JS cache → forces fetch) did NOT help: app still ran embedded code (showed first-run onboarding but old rendering). Net: you can be looking at OLD code and not know it. ALWAYS confirm a fresh bundle in the Metro log (`Android Bundled …ms`) before trusting an on-device render.
+- **Root cause:** emulator (a *Windows* process) → WSL2 Metro on `TCP:8081` is blocked even though `adb shell ping <WSL_IP>` succeeds (~216ms) and `curl http://<WSL_IP>:8081/status` works *from WSL*. ICMP path ≠ TCP path. The adb bridge (`win-emu-up.sh`) only wires the **control plane** (adb 5037), NOT the Metro **data plane** (8081). So `--lan` is necessary but NOT sufficient on this box.
+- **Fix (untried, needs Windows admin):** either a `netsh interface portproxy add v4tov4 listenport=8081 listenaddress=0.0.0.0 connectport=8081 connectaddress=<WSL_IP>` on Windows then `adb reverse tcp:8081 tcp:8081` + deep-link `localhost:8081`; OR a Windows Firewall inbound allow rule for TCP 8081 to the WSL vEthernet, then the direct `<WSL_IP>:8081` path works. Confirm via Metro log showing a real bundle.
+- **Faster alternative:** verify on the physical iPhone via EAS Update OTA (real iOS target, zero WSL networking).
+
 ### `ADB_SERVER_SOCKET` host = default-route gateway  `[verified 2026-05-27]`
 - **Breaks:** using the resolv.conf nameserver IP → `cannot connect to daemon: Connection refused` even though Windows shows the server listening on `0.0.0.0:5037`.
 - **Fix:** derive from the default route, NOT DNS:
