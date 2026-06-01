@@ -1,23 +1,25 @@
 /**
- * SOLDI warm Liquid Glass floating tab bar (redesign Wave 1, spec §2.2/§3).
+ * SOLDI frosted-blur floating tab bar (redesign Wave 1; blur migration
+ * 2026-06-01).
  *
- * The ONLY file allowed to import expo-glass-effect (CLAUDE.md governance).
- * Screens never import it — they get this via app/(tabs)/_layout.tsx's
- * `tabBar` prop. All glass-vs-fallback DECISION + style lives in the pure,
- * node-tested src/design/glass.ts; this component only:
- *   1. reads the two native availability fns at the RN boundary,
+ * The DECISION + style lives in the pure, node-tested src/design/glass.ts; the
+ * blur primitive comes via the src/lib/blurChrome.ts boundary. Screens never
+ * import expo-blur — they get this bar via app/(tabs)/_layout.tsx's `tabBar`
+ * prop. This component only:
+ *   1. reads reduce-transparency at the RN boundary (isBlurSafe),
  *   2. asks glass.ts what to render,
- *   3. renders GlassContainer+GlassView (glass) OR a solid View (fallback).
+ *   3. renders a BlurView frosted pill (glass) OR a solid View (fallback).
  *
- * Fallback is mandatory and equally premium (spec §2.2): off iOS-26 the
- * library degrades GlassView to a TRANSPARENT View, so the fallback path
- * renders an explicit solid warm fill + ELEVATION.floating — never an empty
- * bar. Tab switching is instant (spec — no tab-switch motion preset).
+ * Fallback is mandatory and equally premium (spec §2.2): Android + reduce-
+ * transparency render an explicit solid warm fill + ELEVATION.floating — never
+ * an empty bar. Tab switching is instant (spec — no tab-switch motion preset).
  *
- * Accessibility: each tab is role="tab" with selected state + i18n label;
- * tap target ≥ 44pt (spec R5). reduce-transparency: isLiquidGlassAvailable()
- * may still be true under accessibility limits, so we additionally honor
- * AccessibilityInfo.isReduceTransparencyEnabled() → force the solid path.
+ * Replaced expo-glass-effect (0.1.x beta — TF#8/#10 cold-start crash suspect,
+ * expo/expo#40911) with stable expo-blur.
+ *
+ * Accessibility: each tab is role="tab" with selected state + i18n label; tap
+ * target ≥ 44pt (spec R5). reduce-transparency forces the solid path via
+ * AccessibilityInfo.isReduceTransparencyEnabled().
  */
 
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
@@ -31,10 +33,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { COLORS, RADIUS, SPACING } from '@design/tokens';
+import { COLORS, ELEVATION, RADIUS, SPACING } from '@design/tokens';
 import { TYPE } from '@design/typography';
-import { isSafeToRenderGlass, resolveTabBarChrome } from '@/src/design/glass';
-import { getGlassEffect } from '@lib/glassEffect';
+import { resolveTabBarChrome } from '@/src/design/glass';
+import { BlurView, isBlurSafe } from '@lib/blurChrome';
 import {
   DashboardIcon,
   TransactionsIcon,
@@ -89,16 +91,12 @@ export function GlassTabBar({
     };
   }, []);
 
-  // Native boundary: load expo-glass-effect ONLY on iOS 26+; pre-26 + Android
-  // never touch the native binding (it weak-links iOS-26 symbols that produce
-  // EXC_BAD_ACCESS in Hermes microtask checkpoint on older OS — TF crash
-  // 2026-05-23, expo/expo#40911). When the gate returns null, force fallback.
-  const glassMod = getGlassEffect();
-  const safeGlass =
-    glassMod !== null &&
-    !reduceTransparency &&
-    isSafeToRenderGlass(glassMod.isGlassEffectAPIAvailable(), glassMod.isLiquidGlassAvailable());
-  const chrome = resolveTabBarChrome(safeGlass);
+  // Blur boundary: frosted BlurView on iOS with reduce-transparency OFF;
+  // Android + reduce-transparency fall back to the solid bar. expo-blur is
+  // stable — none of the iOS-26 weak-link crash class the old expo-glass-effect
+  // beta carried (TF#8/#10, expo/expo#40911).
+  const blurOk = isBlurSafe(reduceTransparency);
+  const chrome = resolveTabBarChrome(blurOk);
 
   const bottom = Math.max(insets.bottom, BAR_MARGIN);
 
@@ -160,35 +158,30 @@ export function GlassTabBar({
         </Pressable>
       );
 
-      // safeGlass = (glassMod !== null && ...) by construction, so chrome.glass
-      // implies glassMod !== null. The non-null assertion is the invariant.
-      if (chrome.glass) {
-        const GlassView = glassMod!.GlassView;
-        return (
-          <GlassView
-            key={route.key}
-            glassEffectStyle={chrome.glassEffectStyle}
-            tintColor={chrome.tintColor}
-            isInteractive={chrome.isInteractive}
-            style={styles.glassTab}
-          >
-            {tabContent}
-          </GlassView>
-        );
-      }
+      // One BlurView backs the whole pill (below) — tabs render plain on top,
+      // matching Instagram's single frosted surface (not per-icon glass).
       return tabContent;
     });
 
   if (chrome.glass) {
-    const GlassContainer = glassMod!.GlassContainer;
     return (
       <View
         pointerEvents="box-none"
         style={[styles.wrap, { bottom, left: BAR_MARGIN, right: BAR_MARGIN }]}
       >
-        <GlassContainer spacing={SPACING.xs} style={styles.glassContainer}>
-          {tabs}
-        </GlassContainer>
+        <View style={styles.blurPill}>
+          <BlurView
+            intensity={chrome.blurIntensity}
+            tint={chrome.blurTint}
+            style={StyleSheet.absoluteFill}
+          />
+          {/* Warm wash over the (cool, iOS-default) blur — keeps SOLDI identity. */}
+          <View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, { backgroundColor: chrome.tintColor }]}
+          />
+          <View style={styles.row}>{tabs}</View>
+        </View>
       </View>
     );
   }
@@ -216,14 +209,14 @@ const styles = StyleSheet.create({
   wrap: {
     position: 'absolute',
   },
-  glassContainer: {
-    flexDirection: 'row',
+  blurPill: {
     borderRadius: RADIUS.pill,
-    overflow: 'hidden',
     height: BAR_HEIGHT,
+    overflow: 'hidden',
+    ...ELEVATION.floating,
   },
-  glassTab: {
-    flex: 1,
+  row: {
+    flexDirection: 'row',
     height: BAR_HEIGHT,
   },
   solidBar: {

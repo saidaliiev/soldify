@@ -1,37 +1,11 @@
 /**
- * glass.ts decision + style resolver. node:test + tsx. Availability injected.
+ * glass.ts decision + style resolver. node:test + tsx. blurOk injected.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { shouldRenderGlass, resolveChromeSurface, isSafeToRenderGlass, composeGlassTint, resolveTabBarChrome, resolveSheetChrome } from './glass.js';
+import { composeGlassTint, resolveTabBarChrome, resolveSheetChrome } from './glass.js';
 import { GLASS, ELEVATION, SHADOWS } from './tokens.js';
-
-test('shouldRenderGlass: true only when available', () => {
-  assert.strictEqual(shouldRenderGlass(true), true);
-  assert.strictEqual(shouldRenderGlass(false), false);
-});
-
-test('resolveChromeSurface: glass path returns tint + alpha, glass=true', () => {
-  const s = resolveChromeSurface(true);
-  assert.strictEqual(s.glass, true);
-  assert.strictEqual(s.tint, GLASS.chromeTint);
-  assert.strictEqual(s.tintAlpha, GLASS.chromeTintAlpha);
-});
-
-test('resolveChromeSurface: fallback path is opaque solid fill, glass=false', () => {
-  const s = resolveChromeSurface(false);
-  assert.strictEqual(s.glass, false);
-  assert.strictEqual(s.backgroundColor, GLASS.fallbackChromeBg);
-  assert.strictEqual(s.tintAlpha, 1);
-});
-
-test('isSafeToRenderGlass: true ONLY when both api+liquid available', () => {
-  assert.strictEqual(isSafeToRenderGlass(true, true), true);
-  assert.strictEqual(isSafeToRenderGlass(true, false), false);
-  assert.strictEqual(isSafeToRenderGlass(false, true), false);
-  assert.strictEqual(isSafeToRenderGlass(false, false), false);
-});
 
 test('composeGlassTint: #RRGGBB + alpha → #RRGGBBAA (uppercase, 2-digit)', () => {
   assert.strictEqual(composeGlassTint('#F7F5F0', 0.62), '#F7F5F09E');
@@ -51,19 +25,23 @@ test('composeGlassTint: rejects non-#RRGGBB input', () => {
   assert.throws(() => composeGlassTint('#F7F5F0FF', 0.5), /#RRGGBB/);
 });
 
-test('resolveTabBarChrome: glass path → tintColor hex8 + interactive, glass=true', () => {
+test('resolveTabBarChrome: blurOk=true → blur params + warm tintColor, glass=true', () => {
   const c = resolveTabBarChrome(true);
   assert.strictEqual(c.glass, true);
-  assert.strictEqual(c.tintColor, composeGlassTint(GLASS.chromeTint, GLASS.chromeTintAlpha));
-  assert.strictEqual(c.isInteractive, true);
-  assert.strictEqual(c.glassEffectStyle, 'regular');
+  if (c.glass) {
+    assert.strictEqual(c.blurIntensity, GLASS.blurIntensity);
+    assert.strictEqual(c.blurTint, GLASS.blurTint);
+    assert.strictEqual(c.tintColor, composeGlassTint(GLASS.chromeTint, GLASS.chromeTintAlpha));
+  }
 });
 
-test('resolveTabBarChrome: fallback path → solid bg + floating shadow, glass=false', () => {
+test('resolveTabBarChrome: blurOk=false → solid bg + floating shadow, glass=false', () => {
   const c = resolveTabBarChrome(false);
   assert.strictEqual(c.glass, false);
-  assert.strictEqual(c.backgroundColor, GLASS.fallbackChromeBg);
-  assert.deepStrictEqual(c.shadow, ELEVATION.floating);
+  if (!c.glass) {
+    assert.strictEqual(c.backgroundColor, GLASS.fallbackChromeBg);
+    assert.deepStrictEqual(c.shadow, ELEVATION.floating);
+  }
 });
 
 test('resolveTabBarChrome: discriminated union — no cross-branch field leak', () => {
@@ -74,21 +52,25 @@ test('resolveTabBarChrome: discriminated union — no cross-branch field leak', 
   assert.strictEqual('tintColor' in f, false);
 });
 
-test('resolveSheetChrome: glass path → sheet tint hex8 + interactive, glass=true (Wave 4)', () => {
+test('resolveSheetChrome: blurOk=true → blur params + warm sheet tintColor, glass=true (Wave 4)', () => {
   const c = resolveSheetChrome(true);
   assert.strictEqual(c.glass, true);
-  assert.strictEqual(c.tintColor, composeGlassTint(GLASS.sheetTint, GLASS.sheetTintAlpha));
-  assert.strictEqual(c.isInteractive, true);
-  assert.strictEqual(c.glassEffectStyle, 'regular');
+  if (c.glass) {
+    assert.strictEqual(c.blurIntensity, GLASS.blurIntensity);
+    assert.strictEqual(c.blurTint, GLASS.blurTint);
+    assert.strictEqual(c.tintColor, composeGlassTint(GLASS.sheetTint, GLASS.sheetTintAlpha));
+  }
 });
 
-test('resolveSheetChrome: fallback → opaque solid + modal shadow, glass=false (Wave 4)', () => {
+test('resolveSheetChrome: blurOk=false → opaque solid + modal shadow, glass=false (Wave 4)', () => {
   const c = resolveSheetChrome(false);
   assert.strictEqual(c.glass, false);
-  assert.strictEqual(c.backgroundColor, GLASS.fallbackChromeBg);
-  // Sheet is modal-class — NOT the detached tab-bar pill (ELEVATION.floating).
-  assert.deepStrictEqual(c.shadow, SHADOWS.modal);
-  assert.notDeepStrictEqual(c.shadow, ELEVATION.floating);
+  if (!c.glass) {
+    assert.strictEqual(c.backgroundColor, GLASS.fallbackChromeBg);
+    // Sheet is modal-class — NOT the detached tab-bar pill (ELEVATION.floating).
+    assert.deepStrictEqual(c.shadow, SHADOWS.modal);
+    assert.notDeepStrictEqual(c.shadow, ELEVATION.floating);
+  }
 });
 
 test('resolveSheetChrome: discriminated union — no cross-branch field leak (Wave 4)', () => {

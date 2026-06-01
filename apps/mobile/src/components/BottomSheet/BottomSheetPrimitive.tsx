@@ -57,10 +57,10 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { COLORS, RADIUS, SPACING } from '@design/tokens';
-import { isSafeToRenderGlass, resolveSheetChrome } from '@design/glass';
+import { resolveSheetChrome } from '@design/glass';
 import { MOTION, SHEET_DAMPING_RATIO } from '@design/motion';
 import { useReduceMotion } from '@design/useMotion';
-import { getGlassEffect } from '@lib/glassEffect';
+import { BlurView, isBlurSafe } from '@lib/blurChrome';
 
 // WR-03: SCREEN_HEIGHT was computed once at module load via Dimensions.get().
 // On orientation change or iPad Split View, the cached value goes stale causing
@@ -134,19 +134,14 @@ export const BottomSheetPrimitive = React.forwardRef<BottomSheetPrimitiveRef, Pr
       };
     }, []);
 
-    // iOS-26 gate: expo-glass-effect's native binding weak-links iOS-26-only
-    // symbols. Pre-iOS-26 + Android NEVER touch it (Hermes EXC_BAD_ACCESS at
-    // microtask checkpoint — TF build #8 crash 2026-05-23, expo/expo#40911).
-    const glassMod = getGlassEffect();
+    // Blur boundary: frosted BlurView on iOS with reduce-transparency OFF;
+    // Android + reduce-transparency fall back to the solid sheet fill. Mirrors
+    // GlassTabBar. expo-blur is stable — none of the iOS-26 weak-link crash
+    // class the old expo-glass-effect beta carried (expo/expo#40911).
     const wantGlass = glassSurface === true;
-    const safeGlass =
-      wantGlass &&
-      glassMod !== null &&
-      !reduceTransparency &&
-      isSafeToRenderGlass(glassMod.isGlassEffectAPIAvailable(), glassMod.isLiquidGlassAvailable());
-    const sheetChrome = wantGlass ? resolveSheetChrome(safeGlass) : null;
-    const renderGlass = sheetChrome?.glass === true && glassMod !== null;
-    const GlassView = glassMod?.GlassView ?? null;
+    const blurOk = wantGlass && isBlurSafe(reduceTransparency);
+    const sheetChrome = wantGlass ? resolveSheetChrome(blurOk) : null;
+    const renderGlass = sheetChrome?.glass === true;
     // WR-03: use reactive screen height — stale module-load value caused
     // wrong snap position after orientation change or iPad Split View.
     const { height: screenHeight } = useWindowDimensions();
@@ -325,14 +320,20 @@ export const BottomSheetPrimitive = React.forwardRef<BottomSheetPrimitiveRef, Pr
             >
               {/* Wave 4: warm-glass material behind content (opt-in, gated).
                   pointerEvents none → pan/scroll reach the children. */}
-              {renderGlass && GlassView != null && sheetChrome != null && sheetChrome.glass && (
-                <GlassView
-                  pointerEvents="none"
-                  style={StyleSheet.absoluteFill}
-                  glassEffectStyle={sheetChrome.glassEffectStyle}
-                  tintColor={sheetChrome.tintColor}
-                  isInteractive={sheetChrome.isInteractive}
-                />
+              {renderGlass && sheetChrome != null && sheetChrome.glass && (
+                <>
+                  <BlurView
+                    pointerEvents="none"
+                    intensity={sheetChrome.blurIntensity}
+                    tint={sheetChrome.blurTint}
+                    style={StyleSheet.absoluteFill}
+                  />
+                  {/* Warm wash over the blur — keeps SOLDI identity (chrome only). */}
+                  <View
+                    pointerEvents="none"
+                    style={[StyleSheet.absoluteFill, { backgroundColor: sheetChrome.tintColor }]}
+                  />
+                </>
               )}
               {/* D-09 / QUAL-03: headerRef is the VoiceOver focus landing target on open */}
               <View
