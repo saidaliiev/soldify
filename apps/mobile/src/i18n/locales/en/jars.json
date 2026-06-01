@@ -25,5 +25,16 @@
   "to_go_label": "to go",
   "new_jar": "+ New jar",
   "saved_summary_one": "{{amount}} saved across 1 jar",
-  "saved_summary_other": "{{amount}} saved across {{count}} jars"
+  "saved_summary_other": "{{amount}} saved across {{count}} jars",
+  "forecast": {
+    "saved_of": "{{balance}} of {{target}}",
+    "done_by": "Done by {{date}}",
+    "complete": "Goal reached",
+    "stalled": "Set a weekly amount",
+    "beyond": "2+ years away",
+    "per_week": "{{amount}} / week",
+    "a11y_label": "Weekly contribution plan",
+    "a11y_increase": "Increase weekly amount",
+    "a11y_decrease": "Decrease weekly amount"
+  }
 }

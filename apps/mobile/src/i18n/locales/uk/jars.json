@@ -27,5 +27,16 @@
   "saved_summary_one": "{{amount}} у 1 банці",
   "saved_summary_few": "{{amount}} у {{count}} банках",
   "saved_summary_many": "{{amount}} у {{count}} банках",
-  "saved_summary_other": "{{amount}} у {{count}} банках"
+  "saved_summary_other": "{{amount}} у {{count}} банках",
+  "forecast": {
+    "saved_of": "{{balance}} з {{target}}",
+    "done_by": "Готово до {{date}}",
+    "complete": "Ціль досягнута",
+    "stalled": "Вкажіть тижневу суму",
+    "beyond": "Понад 2 роки",
+    "per_week": "{{amount}} / тиждень",
+    "a11y_label": "План тижневих внесків",
+    "a11y_increase": "Збільшити тижневу суму",
+    "a11y_decrease": "Зменшити тижневу суму"
+  }
 }

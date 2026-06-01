@@ -22,7 +22,7 @@ import { getJar, jarBalanceCents } from './jarsRepo';
 import { sweepToJar } from './sweepRepo';
 import { formatMoney } from '@/src/lib/money';
 import { JarIcon, type JarIconSlug } from '@design/icons/jars';
-import { JarRing } from './JarRing';
+import { JarForecastScrubber } from './JarForecastScrubber';
 import type { Jar } from './types';
 
 export function JarDetailScreen(): React.JSX.Element {
@@ -122,19 +122,16 @@ export function JarDetailScreen(): React.JSX.Element {
           </Text>
         </Pressable>
 
-        {/* Wave 5: featured-size ring (184pt, sw=14) with Oswald hero amount
-            in-center via showCenterLabel; Garamond name + icon sit below
-            (HTML §6 lines 360-372). */}
-        <View style={styles.ringWrap}>
-          <JarRing
-            balanceCents={balance}
-            targetCents={jar.targetCents}
-            size={184}
-            strokeWidth={14}
-            palette="sage"
-            showCenterLabel
-          />
-        </View>
+        {/* C1 — the what-if forecast scrubber is the hero of Jar Detail
+            (spec 2026-06-01-jar-forecast-scrubber-design.md). The progress ring
+            now lives only in the Jars list as compact status; here the
+            projection curve leads. key={jarId} remounts it fresh per jar so the
+            lever reseeds to a sensible default plan. */}
+        <JarForecastScrubber
+          key={jarId}
+          balanceCents={balance}
+          targetCents={jar.targetCents}
+        />
 
         <View style={styles.jarHeader}>
           <View style={styles.iconWrap}>
@@ -230,10 +227,6 @@ const styles = StyleSheet.create({
     fontSize: 21,
     lineHeight: 26,
     color: COLORS.textPrimary,
-  },
-  ringWrap: {
-    alignItems: 'center',
-    marginVertical: SPACING.lg,
   },
   targetRow: {
     flexDirection: 'row',

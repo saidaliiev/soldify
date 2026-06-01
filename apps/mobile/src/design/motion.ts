@@ -40,6 +40,8 @@ export const MOTION = {
   chatBubbleEnter: { durationMs: 280, easing: 'outCubic' },
   /** Snappy press-scale feedback (Wave 4; replaces ad-hoc ~50ms press literals — fabReveal is too slow for a tap). */
   pressFeedback: { durationMs: 90, easing: 'outCubic' },
+  /** Forecast viz fade + rise in on Jar Detail mount (C1 what-if scrubber). */
+  forecastDraw: { durationMs: 620, easing: 'outCubic' },
   /** Bottom-sheet open (spring; Wave 5 governance — consumed by BottomSheetPrimitive). */
   sheetOpen: { durationMs: 420, easing: 'spring' },
   /** Bottom-sheet programmatic close (timing; matches W4 chat-sheet close feel). */
