@@ -67,10 +67,10 @@ Edge cases enumerated & tested: complete, stalled (rate 0), on-track, beyond-hor
 
 ## Interaction & motion (the signature "wow" beat)
 
-- Drag the handle → `weeklyCents` updates; **light haptic on each step** (only if `expo-haptics` is in deps — verify at build; otherwise omit, no hard dependency added).
-- Curve morphs to the new slope; the **crossing marker + date label spring** to the new x (Reanimated `withSpring`, governed via `useMotion`/`useMotionSnap` — NO ad-hoc literals).
-- New presets in `motion.ts`: `forecastCurveMorph` (curve interpolation) + `forecastMarkerSpring` (marker/label settle). Reduce-motion (`useReduceMotion`) → instant, per existing boundary.
-- 60fps on the UI thread (gesture + shared value drive Skia; mirrors DonutChart/JarRing animated-path approach).
+- Drag the handle → `weeklyCents` updates live, quantized to €1; **light haptic when the projected week changes** (expo-haptics is in deps; rejections are swallowed so it stays inert on the simulator).
+- During an active drag the curve + crossing marker + date label track the finger **directly** (the Skia path re-derives per frame — that IS the morph). **DECISION (shipped):** no spring between finger and curve — a spring reads as lag on a slider; direct tracking is the crisper, more "crafted" feel. The only governed animation is the one-shot mount draw-in.
+- Preset added to `motion.ts`: `forecastDraw` (mount fade + rise, via `useMotion`). Reduce-motion (`useReduceMotion`) → instant via the existing boundary. (An earlier draft named `forecastCurveMorph`/`forecastMarkerSpring`; superseded by the direct-tracking decision above — no spring presets shipped.)
+- 60fps on the UI thread: the gesture worklet + a shared `travelW` value drive the handle/fill; `runOnJS` fires once per quantized step (mirrors DonutChart's quantize→runOnJS pattern).
 
 ## Design tokens & a11y (project rules are enforced)
 
@@ -95,4 +95,4 @@ Edge cases enumerated & tested: complete, stalled (rate 0), on-track, beyond-hor
 ## File inventory (create / modify)
 
 - CREATE `src/features/jars/jarForecast.ts`, `jarForecast.test.ts`, `JarForecastCurve.tsx`, `JarForecastScrubber.tsx`
-- MODIFY `app/jars/[id].tsx` (hero integration), `src/design/motion.ts` (+2 presets), `src/i18n/locales/en/jars.json` + `src/i18n/locales/uk/jars.json` (+forecast strings)
+- MODIFY `src/features/jars/JarDetailScreen.tsx` (hero integration — the curve replaces the JarRing hero), `src/design/motion.ts` (+1 preset `forecastDraw`), `src/i18n/locales/en/jars.json` + `src/i18n/locales/uk/jars.json` (+forecast strings)
