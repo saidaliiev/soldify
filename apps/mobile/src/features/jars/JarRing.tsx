@@ -34,7 +34,7 @@ import { useTranslation } from 'react-i18next';
 import { COLORS } from '@design/tokens';
 import { TYPE } from '@design/typography';
 import { formatMoney } from '@lib/money';
-import { jarRingArcPath } from './jarRingGeometry';
+import { jarRingArc } from './jarRingGeometry';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -42,6 +42,12 @@ import { jarRingArcPath } from './jarRingGeometry';
 
 const DEFAULT_SIZE = 160;
 const STROKE_WIDTH = 12;
+// Margin (pt) between the ring's outer stroke edge and the canvas bound. The
+// stroke is `sw` wide and centered on `radius`, so its outer edge sits at
+// radius + sw/2; without this pad that edge lands flush with (or past) the
+// size×size canvas and Skia clips it, making the ring read as flat-topped —
+// the donut "не круг" class (DonutChart STROKE_PAD, d239283).
+const RING_PAD = 2;
 
 // ---------------------------------------------------------------------------
 // Props
@@ -75,7 +81,12 @@ export function JarRing({
 
   // Wave 5: variant-aware geometry; mini (size=46) uses sw=5, featured uses 14.
   const sw = strokeWidth ?? STROKE_WIDTH;
-  const radius = (size - sw) / 2;
+  // Center the ring on the canvas (size/2, size/2) — NOT (radius, radius), which
+  // shifted it sw/2 toward top-left and clipped the outer stroke edge there (the
+  // same off-center clip DonutChart fixed via DONUT_CENTER_OFFSET). radius leaves
+  // sw/2 + RING_PAD so the full stroke stays inside the size×size canvas.
+  const center = size / 2;
+  const radius = center - sw / 2 - RING_PAD;
 
   const fraction = targetCents > 0 ? balanceCents / targetCents : 0;
   const isOverFunded = balanceCents > targetCents && targetCents > 0;
@@ -85,21 +96,30 @@ export function JarRing({
   const ringColor = palette === 'sageSoft' ? COLORS.sageSoft : COLORS.sage;
   const trackColor = `${ringColor}33`;
 
-  // ---- Geometry -------------------------------------------------------
+  // ---- Geometry (native Skia paths — see jarRingGeometry rewrite) ------
 
-  // Background track: full ring (use a circle-arc at 359.9°)
+  // Background track: full ring. addCircle closes seamlessly (no two-arc seam,
+  // no 359.9° hack) and tessellates natively — no MakeFromSVGString faceting.
   const trackPath = useMemo(() => {
-    const p = jarRingArcPath(1, radius, sw);
-    return Skia.Path.MakeFromSVGString(p);
-  }, [radius, sw]);
+    const p = Skia.Path.Make();
+    p.addCircle(center, center, radius);
+    return p;
+  }, [center, radius]);
 
-  // Progress arc path at settled fraction
+  // Progress arc at settled fraction. Full / over-funded → seamless addCircle;
+  // partial → addArc on the centered oval (0° = 3 o'clock, sweeps clockwise).
   const progressPath = useMemo(() => {
-    const clampedFraction = Math.min(1, Math.max(0, fraction));
-    if (clampedFraction === 0) return null;
-    const p = jarRingArcPath(clampedFraction, radius, sw);
-    return Skia.Path.MakeFromSVGString(p);
-  }, [fraction, radius, sw]);
+    const arc = jarRingArc(fraction);
+    if (arc.kind === 'none') return null;
+    const p = Skia.Path.Make();
+    if (arc.kind === 'full') {
+      p.addCircle(center, center, radius);
+    } else {
+      const oval = Skia.XYWHRect(center - radius, center - radius, radius * 2, radius * 2);
+      p.addArc(oval, arc.startDeg, arc.sweepDeg);
+    }
+    return p;
+  }, [fraction, center, radius]);
 
   // ---- D-05: crossfade on fraction change -----------------------------
 

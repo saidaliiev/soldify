@@ -1,119 +1,83 @@
 /**
- * Unit tests for jarRingGeometry — pure arc math for the Skia jar ring.
+ * Unit tests for jarRingGeometry — pure arc spec for the native Skia jar ring.
  *
  * Pattern: node:test + tsx (project Pattern 11).
  * Run via: npx tsx --test src/features/jars/jarRingGeometry.test.ts
  *
- * Tests cover D-04 invariants: fraction clamping, 12 o'clock start angle,
- * Skia-compatible M/A SVG path output.
+ * Covers D-04 invariants: fraction clamping, 12 o'clock (-90°) start angle,
+ * proportional sweep, and the none/full/arc spec consumed by JarRing's
+ * addCircle/addArc renderer (replaces the old MakeFromSVGString string output —
+ * Skia 2.2.x faceted 'A' arcs into an octagon, d239283).
  */
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { jarRingArcPath } from './jarRingGeometry.js';
+import { jarRingArc, JAR_RING_START_DEG } from './jarRingGeometry.js';
 
 // ---------------------------------------------------------------------------
-// Basic shape checks
+// Partial arc — kind, start angle, proportional sweep
 // ---------------------------------------------------------------------------
 
-test('jarRingArcPath: returns a non-empty string for fraction 0.5', () => {
-  const path = jarRingArcPath(0.5, 60, 10);
-  assert.ok(typeof path === 'string' && path.length > 0, 'non-empty string');
+test('jarRingArc: 0.5 → partial arc, 12 o\'clock start, 180° sweep', () => {
+  const arc = jarRingArc(0.5);
+  assert.equal(arc.kind, 'arc');
+  assert.ok(arc.kind === 'arc');
+  assert.equal(arc.startDeg, JAR_RING_START_DEG, 'starts at 12 o\'clock (-90°)');
+  assert.equal(arc.startDeg, -90, '-90° is 12 o\'clock in Skia degrees');
+  assert.equal(arc.sweepDeg, 180, '0.5 → 180°');
 });
 
-test('jarRingArcPath: contains M and A SVG commands', () => {
-  const path = jarRingArcPath(0.5, 60, 10);
-  assert.ok(path.startsWith('M'), 'path starts with M');
-  assert.ok(path.includes('A'), 'path contains A arc command');
+test('jarRingArc: sweep is proportional to fraction', () => {
+  const quarter = jarRingArc(0.25);
+  const threeQuarter = jarRingArc(0.75);
+  assert.ok(quarter.kind === 'arc' && threeQuarter.kind === 'arc');
+  assert.equal(quarter.sweepDeg, 90, '0.25 → 90°');
+  assert.equal(threeQuarter.sweepDeg, 270, '0.75 → 270°');
 });
 
-test('jarRingArcPath: no NaN in output', () => {
-  const path = jarRingArcPath(0.5, 60, 10);
-  assert.ok(!path.includes('NaN'), 'no NaN in path');
-});
-
-// ---------------------------------------------------------------------------
-// fraction = 0 → degenerate (documented zero-sweep)
-// ---------------------------------------------------------------------------
-
-test('jarRingArcPath: fraction 0 returns empty string or zero-sweep degenerate', () => {
-  const path = jarRingArcPath(0, 60, 10);
-  // Acceptable: empty string OR a zero-length arc (documented degenerate)
-  assert.ok(typeof path === 'string', 'returns a string');
-  // Must not contain NaN
-  assert.ok(!path.includes('NaN'), 'no NaN even for fraction 0');
+test('jarRingArc: sweep is always a finite number (no NaN reaches the renderer)', () => {
+  for (const f of [0.1, 0.5, 0.9, 0.999]) {
+    const arc = jarRingArc(f);
+    assert.ok(arc.kind === 'arc');
+    assert.ok(Number.isFinite(arc.sweepDeg), `sweep finite for ${f}`);
+  }
 });
 
 // ---------------------------------------------------------------------------
-// fraction = 1 → full ring (nearly 360°)
+// fraction = 0 → none (track-only, no progress arc)
 // ---------------------------------------------------------------------------
 
-test('jarRingArcPath: fraction 1 → large-arc-flag is 1 (sweep > 180°)', () => {
-  const path = jarRingArcPath(1, 60, 10);
-  // A full ring sweeps ~360° which is > 180° — large-arc-flag must be 1
-  // The A command format: A rx ry x-rotation large-arc-flag sweep-flag x y
-  // large-arc-flag=1 appears in the A segment
-  assert.ok(path.includes(' 1 1 '), 'large-arc-flag=1 for full ring');
-  assert.ok(!path.includes('NaN'), 'no NaN');
+test('jarRingArc: 0 → none (caller renders track only)', () => {
+  assert.equal(jarRingArc(0).kind, 'none');
 });
 
 // ---------------------------------------------------------------------------
-// fraction > 1 → clamped to 1 (D-04 over-funded invariant)
+// fraction ≥ 1 → full ring (addCircle)
 // ---------------------------------------------------------------------------
 
-test('jarRingArcPath: fraction 1.5 is clamped to same result as fraction 1 (D-04)', () => {
-  const pathFull = jarRingArcPath(1, 60, 10);
-  const pathOver = jarRingArcPath(1.5, 60, 10);
-  assert.strictEqual(pathOver, pathFull, 'over-funded clamped to same path as full ring');
+test('jarRingArc: 1 → full ring', () => {
+  assert.equal(jarRingArc(1).kind, 'full');
+});
+
+test('jarRingArc: 1.5 over-funded is clamped to full (D-04)', () => {
+  assert.equal(jarRingArc(1.5).kind, 'full');
+  // Over-funded and exactly-funded must be indistinguishable to the renderer.
+  assert.deepEqual(jarRingArc(1.5), jarRingArc(1));
 });
 
 // ---------------------------------------------------------------------------
-// Consistency — larger radius changes coordinates but not structure
+// Defensive: out-of-range / non-finite fractions never produce a NaN arc
 // ---------------------------------------------------------------------------
 
-test('jarRingArcPath: different radius produces different coordinate values', () => {
-  const path60 = jarRingArcPath(0.5, 60, 10);
-  const path80 = jarRingArcPath(0.5, 80, 10);
-  assert.notStrictEqual(path60, path80, 'different radii produce different paths');
+test('jarRingArc: negative fraction → none', () => {
+  assert.equal(jarRingArc(-0.3).kind, 'none');
 });
 
-// ---------------------------------------------------------------------------
-// Wave 5: featured + mini variants produce distinct, well-formed paths
-// (featured: r=74 sw=14 ; mini: r=18 sw=5)
-// ---------------------------------------------------------------------------
-
-test('jarRingArcPath: featured (r=74 sw=14) vs mini (r=18 sw=5) variants — both well-formed and distinct (Wave 5)', () => {
-  const featured = jarRingArcPath(0.7, 74, 14);
-  const miniHigh = jarRingArcPath(0.7, 18, 5);
-  const miniLow  = jarRingArcPath(0.3, 18, 5);
-  assert.ok(featured.startsWith('M'), 'featured path starts with M');
-  assert.ok(miniHigh.startsWith('M'), 'mini-high path starts with M');
-  assert.ok(miniLow.startsWith('M'),  'mini-low path starts with M');
-  assert.ok(!featured.includes('NaN'), 'featured: no NaN');
-  assert.ok(!miniHigh.includes('NaN'), 'mini-high: no NaN');
-  assert.ok(!miniLow.includes('NaN'),  'mini-low: no NaN');
-  // Same fraction, different radii → different paths
-  assert.notStrictEqual(featured, miniHigh, 'featured ≠ mini at same fraction');
-  // Same radius, different fraction → different paths
-  assert.notStrictEqual(miniHigh, miniLow, 'mini-high ≠ mini-low at different fractions');
-});
-
-// ---------------------------------------------------------------------------
-// 12 o'clock start (π/2 convention) — start point y < center for top start
-// The center is at (radius + strokeWidth/2, radius + strokeWidth/2) matching donutArcs idiom.
-// For fraction=0.25 starting at top, x1 should equal cx (within float tolerance).
-// ---------------------------------------------------------------------------
-
-test("jarRingArcPath: fraction=0.25 start x is approximately cx (12 o'clock start)", () => {
-  const radius = 60;
-  const strokeWidth = 10;
-  const cx = radius; // center, matching chatChartGeometry idiom
-  const path = jarRingArcPath(0.25, radius, strokeWidth);
-  // Extract first numeric pair after 'M '
-  const match = path.match(/^M\s+([\d.+-]+)[\s,]+([\d.+-]+)/);
-  assert.ok(match, 'path has M x y at start');
-  const startX = parseFloat(match![1]!);
-  // At 12 o'clock, x = cx (within 1 unit float rounding)
-  assert.ok(Math.abs(startX - cx) < 1, `start x ${startX} should be near cx ${cx}`);
+test('jarRingArc: NaN / Infinity → none (non-finite guard, never a NaN sweep)', () => {
+  // The non-finite guard runs first, so ±Infinity and NaN all short-circuit to
+  // 'none' rather than reaching the clamp/sweep math.
+  assert.equal(jarRingArc(Number.NaN).kind, 'none');
+  assert.equal(jarRingArc(Number.POSITIVE_INFINITY).kind, 'none');
+  assert.equal(jarRingArc(Number.NEGATIVE_INFINITY).kind, 'none');
 });
