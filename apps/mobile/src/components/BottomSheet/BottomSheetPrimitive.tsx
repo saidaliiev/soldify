@@ -25,13 +25,13 @@
  *   - accessibilityViewIsModal on the sheet container prevents background
  *     content from being reachable by VoiceOver swipe.
  *
- * Wave 4: SANCTIONED expo-glass-effect boundary (2nd, after GlassTabbar;
- * approved at the W4 checkpoint). OPT-IN only via the `glassSurface` prop —
+ * Wave 4: frosted-blur sheet boundary (2nd, after GlassTabBar; blur migration
+ * 2026-06-01). OPT-IN only via the `glassSurface` prop —
  * default path is byte-identical solid COLORS.surface, so the 3 other
  * consumers (Recategorize / JarCreate / CategoryEditor — W5 scope) are
- * untouched. When opted in: native availability + reduce-transparency are
- * read at this boundary, the pure glass.ts resolveSheetChrome decides, glass
- * is an absolute-fill GlassView BEHIND content (transform stays on the plain
+ * untouched. When opted in: reduce-transparency is read at this boundary, the
+ * pure glass.ts resolveSheetChrome decides, the material is an absolute-fill
+ * BlurView BEHIND content (transform stays on the plain
  * Animated.View — no animated native view), fallback = solid + SHADOWS.modal
  * (mandatory, never transparent). Open/close motion is intentionally NOT
  * governed here (W4 checkpoint #2: shared-primitive-motion is deferred debt).
