@@ -136,7 +136,9 @@ export const GLASS = {
   sheetTint: '#F4F5F7', // == background; bottom-sheet wash
   chromeTintAlpha: 0.62, // unchanged (spec §3)
   sheetTintAlpha: 0.55, // unchanged (spec §3)
-  fallbackChromeBg: '#FFFFFF', // solid fill when isLiquidGlassAvailable() === false (== surface)
+  fallbackChromeBg: '#FFFFFF', // solid fill when blur unavailable / reduce-transparency (== surface)
+  blurIntensity: 50, // expo-blur BlurView intensity (0–100); tuned on device
+  blurTint: 'light', // expo-blur BlurTint; warm chromeTint overlay layered on top
 } as const;
 
 /**
