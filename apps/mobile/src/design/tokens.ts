@@ -134,8 +134,8 @@ export const ELEVATION = {
 export const GLASS = {
   chromeTint: '#FFFFFF', // == surface; tab bar / nav wash
   sheetTint: '#F4F5F7', // == background; bottom-sheet wash
-  chromeTintAlpha: 0.62, // unchanged (spec §3)
-  sheetTintAlpha: 0.55, // unchanged (spec §3)
+  chromeTintAlpha: 0.15, // warm wash alpha layered OVER the BlurView — low so it doesn't wash out the frost (was 0.62, an expo-glass-effect material-tint value; review 2026-06-01)
+  sheetTintAlpha: 0.2, // warm wash alpha OVER the sheet BlurView — low, keep translucency (was 0.55; review 2026-06-01)
   fallbackChromeBg: '#FFFFFF', // solid fill when blur unavailable / reduce-transparency (== surface)
   blurIntensity: 50, // expo-blur BlurView intensity (0–100); tuned on device
   blurTint: 'light', // expo-blur BlurTint; warm chromeTint overlay layered on top

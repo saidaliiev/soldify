@@ -169,18 +169,24 @@ export function GlassTabBar({
         pointerEvents="box-none"
         style={[styles.wrap, { bottom, left: BAR_MARGIN, right: BAR_MARGIN }]}
       >
-        <View style={styles.blurPill}>
-          <BlurView
-            intensity={chrome.blurIntensity}
-            tint={chrome.blurTint}
-            style={StyleSheet.absoluteFill}
-          />
-          {/* Warm wash over the (cool, iOS-default) blur — keeps SOLDI identity. */}
-          <View
-            pointerEvents="none"
-            style={[StyleSheet.absoluteFill, { backgroundColor: chrome.tintColor }]}
-          />
-          <View style={styles.row}>{tabs}</View>
+        {/* Outer = shadow (no overflow); inner = clip. iOS overflow:'hidden'
+            sets masksToBounds, which clips the floating drop shadow — so the
+            shadow and the rounded clip must live on separate views. */}
+        <View style={styles.blurPillShadow}>
+          <View style={styles.blurPillClip}>
+            <BlurView
+              intensity={chrome.blurIntensity}
+              tint={chrome.blurTint}
+              style={StyleSheet.absoluteFill}
+            />
+            {/* Low-alpha warm wash over the (cool, iOS-default) blur — keeps
+                SOLDI identity without washing out the frost. */}
+            <View
+              pointerEvents="none"
+              style={[StyleSheet.absoluteFill, { backgroundColor: chrome.tintColor }]}
+            />
+            <View style={styles.row}>{tabs}</View>
+          </View>
         </View>
       </View>
     );
@@ -209,11 +215,14 @@ const styles = StyleSheet.create({
   wrap: {
     position: 'absolute',
   },
-  blurPill: {
+  blurPillShadow: {
+    borderRadius: RADIUS.pill,
+    ...ELEVATION.floating,
+  },
+  blurPillClip: {
     borderRadius: RADIUS.pill,
     height: BAR_HEIGHT,
     overflow: 'hidden',
-    ...ELEVATION.floating,
   },
   row: {
     flexDirection: 'row',
