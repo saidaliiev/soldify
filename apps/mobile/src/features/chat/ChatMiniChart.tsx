@@ -81,16 +81,32 @@ function MiniDonut({
 }: {
   slices: { label: string; value: number; color: string }[];
 }): React.JSX.Element {
-  const arcs = React.useMemo(() => donutArcs(slices, DONUT_RADIUS, DONUT_STROKE), [slices]);
+  const arcs = React.useMemo(() => donutArcs(slices), [slices]);
   // Top 2 slices for labels
   const top2 = [...slices].sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).slice(0, 2);
+
+  // Native addArc on a canvas-centered oval — NOT MakeFromSVGString, which
+  // facets SVG 'A' arcs into a polygon (octagon bug, d239283 / 656f6ee).
+  // Centered on DONUT_SIZE/2: the old geometry centered at (radius+stroke/2),
+  // sitting the ring top-left with empty space bottom-right.
+  const center = DONUT_SIZE / 2;
+  const oval = React.useMemo(
+    () =>
+      Skia.XYWHRect(
+        center - DONUT_RADIUS,
+        center - DONUT_RADIUS,
+        DONUT_RADIUS * 2,
+        DONUT_RADIUS * 2,
+      ),
+    [center],
+  );
 
   return (
     <View style={styles.donutWrap}>
       <Canvas style={{ width: DONUT_SIZE, height: DONUT_SIZE }}>
         {arcs.map((arc, i) => {
-          const p = Skia.Path.MakeFromSVGString(arc.d);
-          if (!p) return null;
+          const p = Skia.Path.Make();
+          p.addArc(oval, arc.startDeg, arc.sweepDeg);
           return (
             <Path
               key={i}

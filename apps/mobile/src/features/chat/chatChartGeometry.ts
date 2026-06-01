@@ -47,59 +47,50 @@ export function sparklinePath(values: readonly number[], w: number, h: number, v
 // ---------------------------------------------------------------------------
 
 export type DonutArc = {
-  d: string;     // SVG arc path for a Skia Path
-  color: string; // resolved hex color (from token resolver in the component)
+  startDeg: number; // Skia degrees: 0° = 3 o'clock, clockwise (y-down); 12 o'clock = -90°
+  sweepDeg: number; // arc sweep in degrees (clockwise positive)
+  color: string;    // token name (resolved by the component's color resolver)
   label: string;
   value: number;
 };
 
 /**
- * Computes donut arc path strings for a set of slices.
+ * Computes donut slice arcs as native-render angle specs.
  *
- * Each arc is a Skia-compatible SVG arc path (A command). The donut is drawn
- * with 2pt gaps between slices.
+ * Emits Skia addArc angles (startDeg / sweepDeg), NOT an SVG 'A' path string:
+ * Skia 2.2.x facets SVG 'A' arcs into a polygon (the donut/jar octagon bug,
+ * d239283 / 656f6ee). The component builds each path with addArc on a centered
+ * oval. The donut is drawn with 2° gaps between slices.
  *
- * @param slices       Array of { label, value, color } (color = token name).
- * @param radius       Arc centerline radius (default 40).
- * @param strokeWidth  Stroke width (default 8).
- * @returns            Array of { d, color, label, value } ordered as input.
+ * Angle convention: 0° = 3 o'clock, clockwise (y-down); 12 o'clock = -90°.
+ * Radius/stroke are a render concern (the component owns the oval), so they are
+ * NOT parameters here — the angle math is geometry-independent.
+ *
+ * @param slices  Array of { label, value, color } (color = token name).
+ * @returns       Array of { startDeg, sweepDeg, color, label, value }, in input order.
  */
 export function donutArcs(
   slices: readonly { label: string; value: number; color: string }[],
-  radius = 40,
-  strokeWidth = 8,
 ): DonutArc[] {
   if (slices.length === 0) return [];
 
   const total = slices.reduce((s, sl) => s + Math.abs(sl.value), 0);
   if (total === 0) return [];
 
-  const cx = radius + strokeWidth / 2;
-  const cy = radius + strokeWidth / 2;
   const GAP_DEG = 2;
-  const gapRad = (GAP_DEG * Math.PI) / 180;
-  const totalGap = gapRad * slices.length;
-  const usable = 2 * Math.PI - totalGap;
+  const usable = 360 - GAP_DEG * slices.length; // degrees available for arcs
 
-  let currentAngle = -Math.PI / 2; // start at 12 o'clock
+  let currentDeg = -90; // start at 12 o'clock
 
   return slices.map((sl) => {
     const proportion = Math.abs(sl.value) / total;
-    const arcAngle = proportion * usable;
-    const startAngle = currentAngle;
-    const endAngle = startAngle + arcAngle;
-    currentAngle = endAngle + gapRad;
-
-    const x1 = cx + radius * Math.cos(startAngle);
-    const y1 = cy + radius * Math.sin(startAngle);
-    const x2 = cx + radius * Math.cos(endAngle);
-    const y2 = cy + radius * Math.sin(endAngle);
-    const largeArc = arcAngle > Math.PI ? 1 : 0;
-
-    const d = `M ${x1.toFixed(2)},${y1.toFixed(2)} A ${radius},${radius} 0 ${largeArc},1 ${x2.toFixed(2)},${y2.toFixed(2)}`;
+    const sweepDeg = proportion * usable;
+    const startDeg = currentDeg;
+    currentDeg = startDeg + sweepDeg + GAP_DEG;
 
     return {
-      d,
+      startDeg,
+      sweepDeg,
       color: sl.color,
       label: sl.label,
       value: sl.value,

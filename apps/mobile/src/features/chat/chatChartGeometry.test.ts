@@ -47,24 +47,39 @@ test('donutArcs: returns correct number of arcs', () => {
     { label: 'dining', value: 50, color: 'sage' },
     { label: 'transport', value: 30, color: 'textMuted' },
   ];
-  const arcs = donutArcs(slices, 40, 8);
+  const arcs = donutArcs(slices);
   assert.strictEqual(arcs.length, 3);
 });
 
-test('donutArcs: each arc d-string starts with M and contains A', () => {
+test("donutArcs: first slice starts at 12 o'clock (-90°), sweeps proportionally", () => {
   const slices = [
     { label: 'groceries', value: 100, color: 'accent' },
     { label: 'dining', value: 50, color: 'sage' },
   ];
-  const arcs = donutArcs(slices, 40, 8);
+  const arcs = donutArcs(slices);
+  assert.strictEqual(arcs[0]!.startDeg, -90, "first arc starts at 12 o'clock");
   for (const arc of arcs) {
-    assert.ok(arc.d.startsWith('M '), `Arc d should start with M: ${arc.d}`);
-    assert.ok(arc.d.includes(' A '), `Arc d should contain A command: ${arc.d}`);
+    assert.ok(Number.isFinite(arc.startDeg), 'startDeg finite');
+    assert.ok(arc.sweepDeg > 0 && Number.isFinite(arc.sweepDeg), 'sweepDeg positive + finite');
   }
+  // Larger value → wider sweep (proportional).
+  assert.ok(arcs[0]!.sweepDeg > arcs[1]!.sweepDeg, 'bigger value sweeps wider');
+});
+
+test('donutArcs: sweeps fill 360° minus the inter-slice gaps', () => {
+  const slices = [
+    { label: 'a', value: 1, color: 'accent' },
+    { label: 'b', value: 1, color: 'sage' },
+    { label: 'c', value: 1, color: 'textMuted' },
+  ];
+  const arcs = donutArcs(slices);
+  const totalSweep = arcs.reduce((s, a) => s + a.sweepDeg, 0);
+  // 3 slices → 3 × 2° gaps; arcs fill the remaining 354°.
+  assert.ok(Math.abs(totalSweep - (360 - 2 * 3)) < 1e-9, 'sweeps fill 360 minus gaps');
 });
 
 test('donutArcs: returns empty for empty slices', () => {
-  assert.deepStrictEqual(donutArcs([], 40, 8), []);
+  assert.deepStrictEqual(donutArcs([]), []);
 });
 
 // ---------------------------------------------------------------------------
