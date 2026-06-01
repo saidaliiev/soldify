@@ -1,5 +1,5 @@
 /**
- * Unit tests for jarsRepo — op-sqlite migration v5 + CRUD + balance.
+ * Unit tests for jarsRepo — op-sqlite migration v6 (head) + CRUD + balance.
  *
  * Pattern: node:test + assert (mirrors donutArcs.test.ts / filterCompose.test.ts).
  * Run via: npx tsx --test src/features/jars/jarsRepo.test.ts
@@ -32,12 +32,12 @@ function freshDB() {
 }
 
 // ---------------------------------------------------------------------------
-// Migration gate: schema version === 5 after runMigrations
+// Migration gate: schema version === 6 after runMigrations
 // ---------------------------------------------------------------------------
 
-test('getSchemaVersion === 5 after runMigrations on a fresh DB', () => {
+test('getSchemaVersion === 6 after runMigrations on a fresh DB', () => {
   const db = freshDB();
-  assert.strictEqual(getSchemaVersion(db), 5);
+  assert.strictEqual(getSchemaVersion(db), 6);
 });
 
 // ---------------------------------------------------------------------------
@@ -104,15 +104,15 @@ test('insertContribution: jarBalanceCents reflects sum of contributions', () => 
 });
 
 // ---------------------------------------------------------------------------
-// runMigrations idempotency: re-running on already-v5 DB does not throw
+// runMigrations idempotency: re-running on already-v6 DB does not throw
 // ---------------------------------------------------------------------------
 
 test('runMigrations is idempotent on an already-migrated DB', () => {
   const db = freshDB();
-  assert.strictEqual(getSchemaVersion(db), 5);
+  assert.strictEqual(getSchemaVersion(db), 6);
   // Must not throw
   assert.doesNotThrow(() => runMigrations(db));
-  assert.strictEqual(getSchemaVersion(db), 5);
+  assert.strictEqual(getSchemaVersion(db), 6);
 });
 
 // ---------------------------------------------------------------------------
