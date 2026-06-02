@@ -198,6 +198,23 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     if (finalText === null) {
+      // Iterations exhausted while still mid tool-chain: the last turn's tool
+      // results are in `contents` but were never synthesized. Force one final
+      // text answer with NO tools so the computed data isn't dropped (H1).
+      try {
+        const synth = await geminiGenerateContent({
+          apiKey: geminiKey,
+          model: 'gemini-2.5-flash',
+          systemInstruction: systemPrompt,
+          contents,
+          generationConfig: { maxOutputTokens: 1024 },
+        });
+        finalText = extractText(synth);
+      } catch {
+        // fall through to the generic message below
+      }
+    }
+    if (finalText === null) {
       finalText = "I couldn't compose a complete answer; try rephrasing.";
     }
   } catch (err) {
