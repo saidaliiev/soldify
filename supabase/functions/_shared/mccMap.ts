@@ -99,7 +99,7 @@ export const MCC_TO_CATEGORY: ReadonlyArray<MccRange> = [
   { range: [8099, 8099], slug: 'health' },             // Health Services not classified
 
   // Pets
-  { range: [0742, 0742], slug: 'pets' },               // Veterinary Services
+  { range: [742, 742], slug: 'pets' },                 // Veterinary Services (MCC 0742; numeric 742)
   { range: [5995, 5995], slug: 'pets' },               // Pet Shops, Pet Foods, Supplies
 
   // Gifts (florists, gift shops, jewelry as gift fallback)
