@@ -48,7 +48,9 @@
         "APP_VARIANT": "production",
         "EXPO_PUBLIC_ENV": "production",
         "SENTRY_DISABLE_AUTO_UPLOAD": "true",
-        "EXPO_PUBLIC_SENTRY_DSN": "https://b027527d99c606003408aea179c217ee@o4511168991133696.ingest.de.sentry.io/4511400894857296"
+        "EXPO_PUBLIC_SENTRY_DSN": "https://b027527d99c606003408aea179c217ee@o4511168991133696.ingest.de.sentry.io/4511400894857296",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://oomohxczfazokevulhco.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9vbW9oeGN6ZmF6b2tldnVsaGNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0MDc2OTcsImV4cCI6MjA5NTk4MzY5N30.J28ezm4f7pDnHcCjIkAlbaApK9kFasojMXX46tmPel0"
       }
     },
     "production": {
@@ -60,7 +62,9 @@
       "channel": "production",
       "env": {
         "APP_VARIANT": "production",
-        "EXPO_PUBLIC_ENV": "production"
+        "EXPO_PUBLIC_ENV": "production",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://oomohxczfazokevulhco.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9vbW9oeGN6ZmF6b2tldnVsaGNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0MDc2OTcsImV4cCI6MjA5NTk4MzY5N30.J28ezm4f7pDnHcCjIkAlbaApK9kFasojMXX46tmPel0"
       }
     }
   },
