@@ -125,10 +125,13 @@ export function JarDetailScreen(): React.JSX.Element {
         {/* C1 — the what-if forecast scrubber is the hero of Jar Detail
             (spec 2026-06-01-jar-forecast-scrubber-design.md). The progress ring
             now lives only in the Jars list as compact status; here the
-            projection curve leads. key={jarId} remounts it fresh per jar so the
-            lever reseeds to a sensible default plan. */}
+            projection curve leads. Keyed on jarId AND balance: the scrubber
+            seeds weeklyCents/progress once at mount, so a Sweep (which mutates
+            balance and shrinks the slider range) must remount it to reseed a
+            sensible default plan — otherwise the handle pins outside the new
+            range and the projection reads incoherently. */}
         <JarForecastScrubber
-          key={jarId}
+          key={`${jarId}-${balance}`}
           balanceCents={balance}
           targetCents={jar.targetCents}
         />

@@ -119,10 +119,16 @@ export function JarForecastScrubber({
     [range.minCents, span, progress, startProgress, lastSent, travelW, commitWeekly],
   );
 
+  // travelW is 0 until onLayout fires, so the seeded position can't be painted
+  // on the very first frame. Gate opacity on a measured track so the handle/fill
+  // appear already at the seeded default (one invisible frame) instead of
+  // flashing at the far-left edge and jumping right once layout lands.
   const handleStyle = useAnimatedStyle(() => ({
+    opacity: travelW.value > 0 ? 1 : 0,
     transform: [{ translateX: progress.value * travelW.value }],
   }));
   const fillStyle = useAnimatedStyle(() => ({
+    opacity: travelW.value > 0 ? 1 : 0,
     width: progress.value * travelW.value + HANDLE / 2,
   }));
 
