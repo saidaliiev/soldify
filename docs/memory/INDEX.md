@@ -23,7 +23,7 @@
 ## Fast facts (30-second orientation)
 
 - **Product:** premium iOS personal finance manager. **Portfolio piece, NOT a regulated fintech** — no PSD2/TrueLayer/AISP. Core value: install → see your spending in 90s without exposing real bank creds.
-- **Stack (locked):** Expo SDK 54 + RN 0.81.5 + TS strict + expo-router v6; Zustand + TanStack Query v5; op-sqlite local + Supabase Postgres (Frankfurt EU) for AI pipeline only; Anthropic Claude (haiku categorize, sonnet chat).
+- **Stack (locked):** Expo SDK 54 + RN 0.81.5 + TS strict + expo-router v6; Zustand + TanStack Query v5; op-sqlite local + Supabase (project `oomohxczfazokevulhco`, eu-west-1) for AI pipeline only; **Google Gemini** (`gemini-2.5-flash-lite` categorize, `gemini-2.5-flash` chat) via deployed edge functions — LIVE 2026-06-02.
 - **Status (STATE.md):** milestone v1.0 executing, Phase 05 polish-testflight-beta, ~57% phases (15/19 plans). Redesign track (Waves 1–6) CODE-complete. TestFlight #9 + Android preview queued.
 - **Verify gate:** `cd apps/mobile && npx tsc --noEmit` exit 0 + `npx expo lint` exit 0 + device test (Expo Go / TestFlight). jest is NOT wired (see gotchas) — tsc+lint are the only automated gates.
 - **App scheme is `soldi`** (not `soldify`) — `apps/mobile/app.json`.

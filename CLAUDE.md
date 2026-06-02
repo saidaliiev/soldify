@@ -23,7 +23,7 @@ This is a **portfolio piece, not a regulated fintech startup.** No PSD2, no True
 - **Security primitives**: expo-secure-store, expo-local-authentication
 - **i18n**: i18next + react-i18next + expo-localization
 - **Backend**: Supabase Edge Functions (Deno + TypeScript)
-- **AI**: Anthropic Claude API — `claude-haiku-4-5` for categorization, `claude-sonnet-4-6` for chat
+- **AI**: Google Gemini API — `gemini-2.5-flash-lite` for categorization, `gemini-2.5-flash` for chat (was Anthropic Claude; migrated 2026-06-02). Edge functions call Gemini REST `generateContent` via `supabase/functions/_shared/gemini.ts`. Secret: `GEMINI_API_KEY`.
 - **Obs**: Sentry (EU) for crashes, PostHog (EU) for product analytics
 - **CI**: GitHub Actions (tsc + expo lint + jest), EAS Build for iOS preview/production
 
