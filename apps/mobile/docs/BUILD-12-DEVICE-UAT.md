@@ -64,7 +64,7 @@ Use a month with **multiple categories** and a jar at a **partial %** (not 0%, n
 
 - [ ] **Dashboard donut** — outer ring is a **smooth circle**, no flat octagon edges, centered
 - [ ] **Jar ring** (Jars list + Jar Detail) — progress arc is a **smooth curve**, no faceting, centered in its box
-- [ ] **Chat mini-donut** — ask the AI something that returns a category-breakdown chart → donut in the bubble is **smooth + centered** (not off-center, not octagon)
+- [ ] **Chat mini-donut** — ⚠️ **SKIP in #12: AI backend not provisioned** (chat shows "AI unavailable"). The chat donut uses geometry IDENTICAL to the dashboard donut, so a smooth dashboard donut implies a smooth chat donut. Verify only after the AI-backend decision (see `BUILD-12-TRIAGE.md`).
 - [ ] All three at small AND large sizes (mini jar row vs featured jar hero) stay smooth
 
 ❌ looks like: visible straight edges / polygon on what should be a circle, or ring clipped / pushed off-center.
@@ -77,7 +77,7 @@ These shipped code-complete weeks ago, never device-verified. Quick visual sanit
 
 - [ ] **Dashboard (W2)** — hero number count-up on load, donut arc draws in, editorial spacing reads premium
 - [ ] **Transactions / Activity (W3)** — rows enter cleanly, date headers + hairlines, icon badges, no layout jump
-- [ ] **Chat (W4)** — bubbles enter staggered, mini-charts render, input row + send button correct
+- [ ] **Chat (W4)** — ⚠️ AI backend inert in #12 → expect the "AI unavailable"/empty state. Verify only the input row + send button + empty-state styling, NOT a live conversation (see AI-backend decision).
 - [ ] **Categories + Jars (W5)** — icon-badge rows, color picker ring, featured jar hero ring
 - [ ] **Onboarding + Settings (W6)** — Welcome hero, page dots, Settings grouped cards + toggles
 - [ ] Palette reads **Slate & Sand** (warm neutral) everywhere — no AI-slop blue/purple/lavender leak
