@@ -1,8 +1,7 @@
 /**
- * ai-query Edge Function — SOLDI chat assistant backed by Claude Sonnet 4.6.
+ * ai-query Edge Function — SOLDI chat assistant backed by Gemini 2.5 Flash.
  *
- * Stream decision (D-CD): Phase 3 ships NON-STREAMING chat. Sonnet returns
- * the full response in one shot. Streaming deferred to a future polish pass.
+ * Non-streaming chat: the model returns the full response in one shot.
  *
  * FactsPack architecture (D-17 to D-20): Transactions live in local op-sqlite.
  * Mobile client builds a FactsPack (aggregate-only) and ships it with each
