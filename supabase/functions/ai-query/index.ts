@@ -13,7 +13,16 @@
 
 import { serve } from 'https://deno.land/std@0.220.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import Anthropic from 'npm:@anthropic-ai/sdk@0.32.1';
+import {
+  geminiGenerateContent,
+  extractText,
+  extractFunctionCalls,
+  modelTurnParts,
+  GeminiError,
+  type GeminiContent,
+  type GeminiPart,
+  type GeminiFunctionDeclaration,
+} from '../_shared/gemini.ts';
 
 import {
   ChatRequest,
@@ -25,10 +34,13 @@ import { CHAT_SYSTEM_PROMPT } from '../_shared/chat-prompts.ts';
 import { QUERY_SHAPES, clampDateRange } from '../_shared/facts-runner.ts';
 import { buildCorsHeaders } from '../_shared/cors.ts';
 
-const QUERY_AGGREGATES_TOOL = {
+// Gemini function declaration — OpenAPI-3.0 schema SUBSET: no `pattern` /
+// `additionalProperties` / `maxItems` (unsupported). ToolInput.safeParse below
+// re-validates the date pattern + strips unknown keys, so the contract holds.
+const QUERY_AGGREGATES_TOOL: GeminiFunctionDeclaration = {
   name: 'query_aggregates',
   description: "Read aggregate spending data from the user's FactsPack.",
-  input_schema: {
+  parameters: {
     type: 'object',
     properties: {
       query_type: {
@@ -45,21 +57,19 @@ const QUERY_AGGREGATES_TOOL = {
       filters: {
         type: 'object',
         properties: {
-          date_from: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
-          date_to: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
-          category_slugs: { type: 'array', items: { type: 'string' }, maxItems: 10 },
+          date_from: { type: 'string', description: 'Start date, YYYY-MM-DD' },
+          date_to: { type: 'string', description: 'End date, YYYY-MM-DD' },
+          category_slugs: { type: 'array', items: { type: 'string' } },
           currency: { type: 'string', enum: ['EUR', 'UAH'] },
-          compare_from: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
-          compare_to: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+          compare_from: { type: 'string', description: 'Comparison start, YYYY-MM-DD' },
+          compare_to: { type: 'string', description: 'Comparison end, YYYY-MM-DD' },
         },
         required: ['date_from', 'date_to'],
-        additionalProperties: false,
       },
     },
     required: ['query_type', 'filters'],
-    additionalProperties: false,
   },
-} as const;
+};
 
 serve(async (req: Request): Promise<Response> => {
   const cors = buildCorsHeaders(req);
@@ -83,12 +93,12 @@ serve(async (req: Request): Promise<Response> => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
-  const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY');
+  const geminiKey = Deno.env.get('GEMINI_API_KEY');
 
   if (!supabaseUrl || !supabaseAnonKey) {
     return corsResponse(JSON.stringify({ error: 'server_misconfigured' }), 500);
   }
-  if (!anthropicKey) {
+  if (!geminiKey) {
     return corsResponse(JSON.stringify({ error: 'ai_unavailable' }), 503);
   }
 
@@ -114,17 +124,18 @@ serve(async (req: Request): Promise<Response> => {
     global: { headers: { Authorization: authHeader } },
   });
 
-  const anthropic = new Anthropic({ apiKey: anthropicKey });
-
   const today = new Date().toISOString().slice(0, 10);
   const systemPrompt = `${CHAT_SYSTEM_PROMPT}\n\nToday is ${today}. The user's data covers ${facts_pack.date_from} to ${facts_pack.date_to} in ${facts_pack.currency}.`;
 
-  type MsgContent = string | Array<{ type: string; [key: string]: unknown }>;
-  type AnthropicMsg = { role: 'user' | 'assistant'; content: MsgContent };
-
-  const messages: AnthropicMsg[] = [
-    ...history.map((h) => ({ role: h.role as 'user' | 'assistant', content: h.text })),
-    { role: 'user', content: message },
+  // Gemini conversation. Assistant history maps to the `model` role; each prior
+  // turn is a single text part. The tool loop appends model functionCall turns
+  // and user functionResponse turns (Gemini's REST function-calling shape).
+  const contents: GeminiContent[] = [
+    ...history.map((h) => ({
+      role: (h.role === 'assistant' ? 'model' : 'user') as 'user' | 'model',
+      parts: [{ text: h.text }] as GeminiPart[],
+    })),
+    { role: 'user', parts: [{ text: message }] },
   ];
 
   const MAX_ITERATIONS = 3;
@@ -132,83 +143,65 @@ serve(async (req: Request): Promise<Response> => {
 
   try {
     for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
-      // deno-lint-ignore no-explicit-any
-      const response = await (anthropic.messages.create as any)({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1024,
-        system: systemPrompt,
-        tools: [QUERY_AGGREGATES_TOOL],
-        tool_choice: { type: 'auto' },
-        messages,
+      const response = await geminiGenerateContent({
+        apiKey: geminiKey,
+        model: 'gemini-2.5-flash',
+        systemInstruction: systemPrompt,
+        contents,
+        tools: [{ functionDeclarations: [QUERY_AGGREGATES_TOOL] }],
+        toolConfig: { functionCallingConfig: { mode: 'AUTO' } },
+        generationConfig: { maxOutputTokens: 1024 },
       });
 
-      if (response.stop_reason === 'end_turn') {
-        const tb = response.content.find((b: { type: string }) => b.type === 'text') as
-          | { type: 'text'; text: string }
-          | undefined;
-        finalText = tb?.text ?? null;
+      const calls = extractFunctionCalls(response);
+      if (calls.length === 0) {
+        // No tool call → the model answered directly.
+        finalText = extractText(response);
         break;
       }
 
-      if (response.stop_reason === 'tool_use') {
-        const toolBlocks = response.content.filter(
-          (b: { type: string }) => b.type === 'tool_use',
-        ) as Array<{ type: 'tool_use'; id: string; name: string; input: unknown }>;
+      // Echo the model's function-call turn verbatim, then answer each call.
+      contents.push({ role: 'model', parts: modelTurnParts(response) });
 
-        if (toolBlocks.length === 0) {
-          const tb = response.content.find((b: { type: string }) => b.type === 'text') as
-            | { type: 'text'; text: string }
-            | undefined;
-          finalText = tb?.text ?? null;
-          break;
-        }
-
-        messages.push({ role: 'assistant', content: response.content });
-
-        const toolResults: Array<{ type: 'tool_result'; tool_use_id: string; content: string }> = [];
-
-        for (const tb of toolBlocks) {
-          const inputParse = ToolInput.safeParse(tb.input);
-          if (!inputParse.success) {
-            toolResults.push({
-              type: 'tool_result',
-              tool_use_id: tb.id,
-              content: JSON.stringify({ error: 'invalid_tool_input' }),
-            });
-            continue;
-          }
-
-          const { query_type, filters } = inputParse.data;
-          const { date_from, date_to, clamped } = clampDateRange(filters.date_from, filters.date_to);
-          const clampedFilters = { ...filters, date_from, date_to };
-
-          const queryFn = QUERY_SHAPES[query_type];
-          const queryResult = queryFn(facts_pack, clampedFilters);
-          if (clamped) queryResult.clamped_date_range = true;
-
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: tb.id,
-            content: JSON.stringify(queryResult),
+      const responseParts: GeminiPart[] = [];
+      for (const call of calls) {
+        if (call.name !== 'query_aggregates') {
+          responseParts.push({
+            functionResponse: { name: call.name, response: { error: 'unknown_function' } },
           });
+          continue;
+        }
+        const inputParse = ToolInput.safeParse(call.args);
+        if (!inputParse.success) {
+          responseParts.push({
+            functionResponse: { name: 'query_aggregates', response: { error: 'invalid_tool_input' } },
+          });
+          continue;
         }
 
-        messages.push({ role: 'user', content: toolResults });
-        continue;
-      }
+        const { query_type, filters } = inputParse.data;
+        const { date_from, date_to, clamped } = clampDateRange(filters.date_from, filters.date_to);
+        const clampedFilters = { ...filters, date_from, date_to };
 
-      const tb = response.content.find((b: { type: string }) => b.type === 'text') as
-        | { type: 'text'; text: string }
-        | undefined;
-      finalText = tb?.text ?? null;
-      break;
+        const queryFn = QUERY_SHAPES[query_type];
+        const queryResult = queryFn(facts_pack, clampedFilters);
+        if (clamped) queryResult.clamped_date_range = true;
+
+        responseParts.push({
+          functionResponse: {
+            name: 'query_aggregates',
+            response: queryResult as unknown as Record<string, unknown>,
+          },
+        });
+      }
+      contents.push({ role: 'user', parts: responseParts });
     }
 
     if (finalText === null) {
       finalText = "I couldn't compose a complete answer; try rephrasing.";
     }
   } catch (err) {
-    const status = (err as { status?: number }).status;
+    const status = err instanceof GeminiError ? err.status : undefined;
     if (status != null && (status >= 500 || status === 429)) {
       return corsResponse(JSON.stringify({ error: 'ai_unavailable' }), 503);
     }

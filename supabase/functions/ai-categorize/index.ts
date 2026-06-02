@@ -16,16 +16,20 @@
  * GDPR safety gate:
  *   - CategorizeRequest .strict() rejects any extra field (description, notes, raw_data)
  *   - HaikuPayload .strict() ensures only merchant_name+mcc+amount_sign+amount_bucket
- *     cross the wire to Anthropic
+ *     cross the wire to the LLM (Gemini)
  *   - Zero console.log of payload contents (matches lib/http.ts discipline)
  *
  * Version pinning (deno imports below) keeps Edge Function builds reproducible.
- * Anthropic SDK pinning avoids surprise model-ID drift between Haiku revisions.
+ * Gemini model IDs are pinned to avoid drift between flash revisions.
  */
 
 import { serve } from 'https://deno.land/std@0.220.0/http/server.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import Anthropic from 'npm:@anthropic-ai/sdk@0.32.1';
+import {
+  geminiGenerateContent,
+  extractFunctionCalls,
+  type GeminiFunctionDeclaration,
+} from '../_shared/gemini.ts';
 
 import {
   CategorizeRequest,
@@ -43,8 +47,8 @@ import { buildCorsHeaders } from '../_shared/cors.ts';
 // Constants
 // ---------------------------------------------------------------------------
 
-const MODEL_ID = 'claude-haiku-4-5'; // CONTEXT L-02, locked
-const HAIKU_CONCURRENCY = 5;          // D-21
+const MODEL_ID = 'gemini-2.5-flash-lite'; // categorize tier-3 (was claude-haiku-4-5)
+const GEMINI_CONCURRENCY = 5;         // D-21
 const CONFIDENCE_AUTO_APPLY = 0.75;   // D-11
 const CONFIDENCE_PERSIST_OVERRIDE = 0.85; // D-12 (client-side persist)
 const DAILY_CAP_CENTS = 2000;         // $0.20 categorize cap per CONTEXT D-24
@@ -129,17 +133,17 @@ function resolveTier2(unresolved: ReadonlyArray<Unresolved>): {
 /**
  * Resolves Tier 3 — Haiku-4.5 with tool-use, concurrency capped.
  *
- * Each row is its own Anthropic call (Promise.allSettled across batches of
+ * Each row is its own Gemini call (Promise.allSettled across batches of
  * HAIKU_CONCURRENCY). Per-row failures emit { tx_id, error }; whole-batch
  * failure (all rows rejected with 5xx/429) signals the caller to 503.
  *
  * Tool-use is forced and the input_schema enum on category_slug is closed.
- * Per AI-SPEC G10 + T-03-01-09: Anthropic API enforces the enum; we also
+ * Per AI-SPEC G10 + T-03-01-09: Gemini function-calling enforces the enum; we also
  * validate again on receipt as defense in depth.
  */
 async function resolveTier3(
   unresolved: ReadonlyArray<Unresolved>,
-  anthropic: Anthropic,
+  apiKey: string,
 ): Promise<{
   hits: Array<SuccessResult & { tier: 'llm' }>;
   errors: Array<{ tx_id: number; error: string }>;
@@ -149,18 +153,19 @@ async function resolveTier3(
     return { hits: [], errors: [], allFailed: false };
   }
 
-  const TOOL = {
+  // Gemini function declaration — OpenAPI-3.0 schema subset (no
+  // additionalProperties / numeric bounds / maxLength; args re-checked below).
+  const TOOL: GeminiFunctionDeclaration = {
     name: 'assign_category',
     description: 'Assign a single category slug + confidence to the transaction.',
-    input_schema: {
-      type: 'object' as const,
+    parameters: {
+      type: 'object',
       properties: {
-        category_slug: { type: 'string' as const, enum: [...CATEGORY_SLUGS] },
-        confidence: { type: 'number' as const, minimum: 0, maximum: 1 },
-        rationale: { type: 'string' as const, maxLength: 200 },
+        category_slug: { type: 'string', enum: [...CATEGORY_SLUGS] },
+        confidence: { type: 'number' },
+        rationale: { type: 'string' },
       },
       required: ['category_slug', 'confidence'],
-      additionalProperties: false,
     },
   };
 
@@ -168,32 +173,38 @@ async function resolveTier3(
   const errors: Array<{ tx_id: number; error: string }> = [];
 
   // Process in concurrency-capped chunks.
-  for (let i = 0; i < unresolved.length; i += HAIKU_CONCURRENCY) {
-    const chunk = unresolved.slice(i, i + HAIKU_CONCURRENCY);
+  for (let i = 0; i < unresolved.length; i += GEMINI_CONCURRENCY) {
+    const chunk = unresolved.slice(i, i + GEMINI_CONCURRENCY);
     const settled = await Promise.allSettled(
       chunk.map(async (u) => {
         const userMsg = categorizeUserMessage([u.payload]);
-        const resp = await anthropic.messages.create({
+        const resp = await geminiGenerateContent({
+          apiKey,
           model: MODEL_ID,
-          max_tokens: 256,
-          system: CATEGORIZE_SYSTEM_PROMPT,
-          tools: [TOOL],
-          tool_choice: { type: 'tool', name: 'assign_category' },
-          messages: [{ role: 'user', content: userMsg }],
+          systemInstruction: CATEGORIZE_SYSTEM_PROMPT,
+          contents: [{ role: 'user', parts: [{ text: userMsg }] }],
+          tools: [{ functionDeclarations: [TOOL] }],
+          // mode ANY + a single allowed name forces the function call (the
+          // closed `category_slug` enum is the closed-set guarantee).
+          toolConfig: {
+            functionCallingConfig: { mode: 'ANY', allowedFunctionNames: ['assign_category'] },
+          },
+          generationConfig: { maxOutputTokens: 256, temperature: 0 },
         });
-        // Find the tool_use content block
+
+        const call =
+          extractFunctionCalls(resp).find((c) => c.name === 'assign_category') ??
+          extractFunctionCalls(resp)[0];
         let slug: string | null = null;
         let confidence = 0;
-        for (const block of resp.content) {
-          if (block.type === 'tool_use' && block.name === 'assign_category') {
-            const input = block.input as { category_slug?: unknown; confidence?: unknown };
-            if (typeof input.category_slug === 'string') slug = input.category_slug;
-            if (typeof input.confidence === 'number') confidence = input.confidence;
-            break;
-          }
+        if (call) {
+          const args = call.args as { category_slug?: unknown; confidence?: unknown };
+          if (typeof args.category_slug === 'string') slug = args.category_slug;
+          if (typeof args.confidence === 'number') confidence = args.confidence;
         }
+        // Defense in depth: re-validate the slug against the closed enum.
         if (slug == null || !CATEGORY_SLUGS.includes(slug)) {
-          throw new Error('haiku_unknown_slug');
+          throw new Error('gemini_unknown_slug');
         }
         return { tx_id: u.tx_id, category_slug: slug, confidence };
       }),
@@ -212,7 +223,7 @@ async function resolveTier3(
           tier: 'llm',
         });
       } else {
-        errors.push({ tx_id: u.tx_id, error: 'haiku_failed' });
+        errors.push({ tx_id: u.tx_id, error: 'gemini_failed' });
       }
     }
   }
@@ -307,13 +318,13 @@ serve(async (req: Request): Promise<Response> => {
   let tier3AllFailed = false;
   if (!capExceeded && afterTier2.length > 0) {
     try {
-      const anthropic = anthropicSingleton();
-      const t3 = await resolveTier3(afterTier2, anthropic);
+      const apiKey = geminiApiKey();
+      const t3 = await resolveTier3(afterTier2, apiKey);
       tier3Hits = t3.hits;
       tier3Errors = t3.errors;
       tier3AllFailed = t3.allFailed;
     } catch (_err) {
-      // Whole-batch failure (e.g. Anthropic outage, missing key) → 503 envelope.
+      // Whole-batch failure (e.g. Gemini outage, missing key) → 503 envelope.
       return jsonResponse(
         { error: 'ai_unavailable', retry_after: 60 },
         503,
@@ -365,14 +376,10 @@ serve(async (req: Request): Promise<Response> => {
 // Test-internals export (consumed by tests + eval harness)
 // ---------------------------------------------------------------------------
 
-let _anthropic: Anthropic | null = null;
-function anthropicSingleton(): Anthropic {
-  if (_anthropic == null) {
-    const key = Deno.env.get('ANTHROPIC_API_KEY');
-    if (!key) throw new Error('ANTHROPIC_API_KEY missing');
-    _anthropic = new Anthropic({ apiKey: key });
-  }
-  return _anthropic;
+function geminiApiKey(): string {
+  const key = Deno.env.get('GEMINI_API_KEY');
+  if (!key) throw new Error('GEMINI_API_KEY missing');
+  return key;
 }
 
 export const __test_internals = {
