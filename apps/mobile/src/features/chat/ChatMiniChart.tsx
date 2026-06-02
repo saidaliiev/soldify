@@ -81,7 +81,6 @@ function MiniDonut({
 }: {
   slices: { label: string; value: number; color: string }[];
 }): React.JSX.Element {
-  const arcs = React.useMemo(() => donutArcs(slices), [slices]);
   // Top 2 slices for labels
   const top2 = [...slices].sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).slice(0, 2);
 
@@ -101,23 +100,32 @@ function MiniDonut({
     [center],
   );
 
+  // Build the native Skia arc paths once per slices/oval change. Chat bubbles
+  // re-render as tokens stream, so constructing Skia.Path objects in the render
+  // body (as MiniSparkline avoids) would churn native allocations every frame.
+  const arcPaths = React.useMemo(
+    () =>
+      donutArcs(slices).map((arc) => {
+        const path = Skia.Path.Make();
+        path.addArc(oval, arc.startDeg, arc.sweepDeg);
+        return { path, color: arc.color };
+      }),
+    [slices, oval],
+  );
+
   return (
     <View style={styles.donutWrap}>
       <Canvas style={{ width: DONUT_SIZE, height: DONUT_SIZE }}>
-        {arcs.map((arc, i) => {
-          const p = Skia.Path.Make();
-          p.addArc(oval, arc.startDeg, arc.sweepDeg);
-          return (
-            <Path
-              key={i}
-              path={p}
-              color={resolveColor(arc.color)}
-              style="stroke"
-              strokeWidth={DONUT_STROKE}
-              strokeCap="butt"
-            />
-          );
-        })}
+        {arcPaths.map((arc, i) => (
+          <Path
+            key={i}
+            path={arc.path}
+            color={resolveColor(arc.color)}
+            style="stroke"
+            strokeWidth={DONUT_STROKE}
+            strokeCap="butt"
+          />
+        ))}
       </Canvas>
       {top2.length > 0 && (
         <View style={styles.donutLabels}>
@@ -146,17 +154,25 @@ const BAR_V_PAD = 20;
 function MiniBar({ bars }: { bars: { label: string; value: number }[] }): React.JSX.Element {
   const layout = React.useMemo(() => barLayout(bars, BAR_W, BAR_H, BAR_V_PAD), [bars]);
 
+  // Memoize the rounded-rect Skia paths so streaming re-renders don't re-allocate
+  // native path objects per bar each frame (see MiniDonut note).
+  const barPaths = React.useMemo(
+    () =>
+      layout.map((b) => {
+        const rect = Skia.Path.Make();
+        const r = 3; // RADIUS.sm equivalent for bar tops
+        rect.addRRect({ rect: { x: b.x, y: b.y, width: b.w, height: b.h }, rx: r, ry: r });
+        return rect;
+      }),
+    [layout],
+  );
+
   return (
     <View>
       <Canvas style={{ width: BAR_W, height: BAR_H }}>
-        {layout.map((b, i) => {
-          const rect = Skia.Path.Make();
-          const r = 3; // RADIUS.sm equivalent for bar tops
-          rect.addRRect(
-            { rect: { x: b.x, y: b.y, width: b.w, height: b.h }, rx: r, ry: r },
-          );
-          return <Path key={i} path={rect} color={COLORS.accent} style="fill" />;
-        })}
+        {barPaths.map((path, i) => (
+          <Path key={i} path={path} color={COLORS.accent} style="fill" />
+        ))}
       </Canvas>
       <View style={[styles.barLabels, { width: BAR_W }]}>
         {layout.map((b, i) => (
