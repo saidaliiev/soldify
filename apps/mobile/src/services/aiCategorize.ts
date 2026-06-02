@@ -26,7 +26,7 @@
  */
 
 import { HttpError, httpJson } from '@lib/http';
-import { getSession } from '@lib/supabase';
+import { ensureAnonSession } from '@lib/supabase';
 import { getCategoryIdBySlug } from '@data/categoriesRepo';
 
 // ---------------------------------------------------------------------------
@@ -105,10 +105,10 @@ export async function aiCategorizeBatch(
   }
 
   // ---- Session (JWT required by Edge Function auth gate) ----
-  const session = await getSession();
+  // Anonymous session — the app has no sign-in; ensureAnonSession mints/reuses an
+  // anon JWT when Supabase is configured, else returns null → skip silently.
+  const session = await ensureAnonSession();
   if (session == null) {
-    // No signed-in user — skip categorization silently.
-    // Phase 3: anonymous usage; categorization is best-effort.
     return { results: inputs.map((i) => ({ tx_id: i.tx_id, error: 'no_session' })) };
   }
 

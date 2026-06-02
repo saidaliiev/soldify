@@ -101,3 +101,37 @@ export async function getSession() {
   }
   return data.session;
 }
+
+/**
+ * Returns a valid Supabase session, creating an ANONYMOUS one if none exists.
+ *
+ * The app is offline-first with no sign-in UI, but the AI Edge Functions deploy
+ * with verify_jwt=true — every request needs a bearer JWT. An anonymous user
+ * (requires Supabase Auth → "Anonymous sign-ins" enabled in the project) yields
+ * exactly that: a persisted JWT with the `authenticated` audience that passes
+ * verify_jwt and scopes Phase-4 merchant_overrides RLS per device. Idempotent —
+ * reuses the persisted session on every launch after the first.
+ *
+ * NEVER throws and NEVER runs at module scope. Returns null when Supabase is
+ * unconfigured or anonymous auth is unavailable/fails, so AI callers degrade to
+ * the graceful "AI unavailable" path instead of crashing.
+ */
+export async function ensureAnonSession() {
+  if (!isSupabaseConfigured()) {
+    return null;
+  }
+  try {
+    const client = getSupabase();
+    const existing = await client.auth.getSession();
+    if (existing.data.session != null) {
+      return existing.data.session;
+    }
+    const { data, error } = await client.auth.signInAnonymously();
+    if (error) {
+      return null;
+    }
+    return data.session;
+  } catch {
+    return null;
+  }
+}

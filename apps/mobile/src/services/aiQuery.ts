@@ -20,7 +20,7 @@
  */
 
 import { HttpError, httpJson } from '@lib/http';
-import { getSession } from '@lib/supabase';
+import { ensureAnonSession } from '@lib/supabase';
 
 // ---------------------------------------------------------------------------
 // Types — hand-typed mirror of chat-schemas.ts to avoid bundling zod in mobile
@@ -77,7 +77,7 @@ export async function aiQuery(args: {
   history: readonly { role: 'user' | 'assistant'; text: string }[];
   factsPack: FactsPack;
 }): Promise<ChatResponse> {
-  const session = await getSession();
+  const session = await ensureAnonSession();
   if (session == null) {
     throw new Error('Service unavailable');
   }
